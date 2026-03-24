@@ -1,0 +1,36 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+websockets==13.1
+
+# DB
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+psycopg2-binary==2.9.10
+
+# Async task queue
+celery==5.4.0
+redis==5.2.1
+
+# AI / LLM
+anthropic==0.40.0
+openai==1.57.0
+tavily-python==0.5.0
+
+# File parsing
+pdfplumber==0.11.4
+python-docx==1.1.2
+
+# Storage
+boto3==1.35.81
+
+# HTTP
+httpx==0.28.1
+python-multipart==0.0.20
+
+# Config
+python-dotenv==1.0.1
+pydantic-settings==2.7.0
+
+# Utils
+aiofiles==24.1.0

@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "면터뷰",
+    "slug": "myonterview",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0a0a0a"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.myonterview.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "면접 화면에서 카메라를 사용합니다.",
+        "NSMicrophoneUsageDescription": "면접 답변 녹음에 마이크를 사용합니다."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a"
+      },
+      "package": "com.myonterview.app",
+      "permissions": ["CAMERA", "RECORD_AUDIO"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-camera",
+      [
+        "expo-av",
+        { "microphonePermission": "면접 답변 녹음에 마이크를 사용합니다." }
+      ]
+    ],
+    "scheme": "myonterview"
+  }
+}
