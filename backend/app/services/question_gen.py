@@ -1,8 +1,8 @@
-"""질문 생성 파이프라인 (Claude API + Tavily 웹 검색)."""
+"""질문 생성 파이프라인 (OpenAI-compatible API + Tavily 웹 검색)."""
 import json
 from typing import Optional
 
-import anthropic
+from openai import OpenAI
 from tavily import TavilyClient
 
 from app.core.config import get_settings
@@ -10,21 +10,13 @@ from app.models.schemas import QuestionCategory
 
 settings = get_settings()
 
-_claude = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+_llm = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
 _tavily = TavilyClient(api_key=settings.tavily_api_key) if settings.tavily_api_key else None
 
 INTERVIEWER_PERSONAS = {
     1: "인사팀 팀장 (40대 여성, 친절하고 체계적, 인성·문화 적합성 중심)",
     2: "개발팀 리드 (30대 남성, 날카롭고 기술적, 실무 능력·문제 해결력 중심)",
     3: "경영진 (50대 남성, 압박 스타일, 논리력·위기 대응력·비전 중심)",
-}
-
-CATEGORY_COUNT = {
-    QuestionCategory.INTRO: (1, 2),
-    QuestionCategory.TECHNICAL: (4, 5),
-    QuestionCategory.BEHAVIORAL: (3, 4),
-    QuestionCategory.SITUATIONAL: (2, 3),
-    QuestionCategory.CLOSING: (1, 1),
 }
 
 
@@ -44,8 +36,8 @@ def _search_company_info(company: str, job_title: str) -> str:
 
 def _build_profile(resume_text: str) -> dict:
     """이력서 텍스트 → 구조화된 프로필 JSON."""
-    message = _claude.messages.create(
-        model="claude-sonnet-4-6",
+    response = _llm.chat.completions.create(
+        model=settings.llm_model,
         max_tokens=1024,
         messages=[
             {
@@ -68,7 +60,7 @@ def _build_profile(resume_text: str) -> dict:
         ],
     )
     try:
-        return json.loads(message.content[0].text)
+        return json.loads(response.choices[0].message.content)
     except Exception:
         return {"raw": resume_text[:2000]}
 
@@ -127,14 +119,13 @@ def generate_questions(
   {{"text": "질문 내용", "category": "intro|technical|behavioral|situational|closing", "interviewer_id": 1}}
 ]"""
 
-    message = _claude.messages.create(
-        model="claude-sonnet-4-6",
+    response = _llm.chat.completions.create(
+        model=settings.llm_model,
         max_tokens=3000,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = message.content[0].text.strip()
-    # JSON 배열 부분만 추출
+    raw = response.choices[0].message.content.strip()
     start = raw.find("[")
     end = raw.rfind("]") + 1
     return json.loads(raw[start:end])

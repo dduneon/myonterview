@@ -1,12 +1,12 @@
-"""피드백 생성 파이프라인 (Claude API)."""
+"""피드백 생성 파이프라인 (OpenAI-compatible API)."""
 import json
 
-import anthropic
+from openai import OpenAI
 
 from app.core.config import get_settings
 
 settings = get_settings()
-_claude = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+_llm = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
 
 
 def generate_feedback(
@@ -56,13 +56,13 @@ JSON만 출력하고 설명은 생략해.
   "improvements": ["개선점1", "개선점2", "개선점3"]
 }}"""
 
-    message = _claude.messages.create(
-        model="claude-sonnet-4-6",
+    response = _llm.chat.completions.create(
+        model=settings.llm_model,
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = message.content[0].text.strip()
+    raw = response.choices[0].message.content.strip()
     start = raw.find("{")
     end = raw.rfind("}") + 1
     return json.loads(raw[start:end])

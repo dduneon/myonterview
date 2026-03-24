@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 from app.core.config import get_settings
 
 settings = get_settings()
-_client = AsyncOpenAI(api_key=settings.openai_api_key)
+_client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
 
 
 async def transcribe(audio_bytes: bytes, suffix: str = ".webm") -> str:

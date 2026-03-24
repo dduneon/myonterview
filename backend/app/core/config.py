@@ -3,15 +3,18 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Claude API
-    anthropic_api_key: str
+    # LLM — OpenAI-compatible API (질문 생성, 피드백)
+    llm_api_key: str
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-4o"
+
+    # OpenAI Whisper STT
+    openai_api_key: str
+    openai_base_url: str = "https://api.openai.com/v1"
 
     # Naver CLOVA TTS
     naver_tts_client_id: str = ""
     naver_tts_client_secret: str = ""
-
-    # OpenAI Whisper
-    openai_api_key: str
 
     # Tavily
     tavily_api_key: str = ""
