@@ -37,9 +37,11 @@ def upload_bytes(data: bytes, key: str, content_type: str = "application/octet-s
         ContentType=content_type,
     )
 
-    # MinIO 또는 커스텀 엔드포인트
-    if settings.aws_s3_endpoint_url:
-        return f"{settings.aws_s3_endpoint_url}/{settings.aws_s3_bucket}/{key}"
+    # 공개 URL: 브라우저가 접근 가능한 주소로 반환
+    # aws_s3_public_url이 있으면 사용 (로컬 MinIO: http://localhost:9000)
+    # 없으면 endpoint_url 그대로, 둘 다 없으면 AWS S3 기본 URL
+    base = settings.aws_s3_public_url or settings.aws_s3_endpoint_url
+    if base:
+        return f"{base}/{settings.aws_s3_bucket}/{key}"
 
-    # AWS S3 기본 URL
     return f"https://{settings.aws_s3_bucket}.s3.{settings.aws_region}.amazonaws.com/{key}"

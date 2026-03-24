@@ -4,8 +4,31 @@
  * - 녹음 완료 시 base64 오디오 반환
  */
 import { useRef, useState } from "react";
+import { Platform } from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
+
+/** 녹음 파일 URI → base64 문자열 변환 (플랫폼별 분기) */
+async function uriToBase64(uri: string): Promise<string> {
+  if (Platform.OS === "web") {
+    // 웹: blob URL → FileReader로 base64 변환
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1]); // "data:audio/webm;base64,XXX" 에서 XXX만 추출
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  // 네이티브: expo-file-system 사용
+  return FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+}
 
 export function useSTT() {
   const recordingRef = useRef<Audio.Recording | null>(null);
@@ -36,11 +59,7 @@ export function useSTT() {
     const uri = recording.getURI();
     if (!uri) return null;
 
-    // base64로 변환해서 WebSocket으로 전송
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return base64;
+    return uriToBase64(uri);
   }
 
   return { startRecording, stopRecording, isRecording };

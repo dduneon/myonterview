@@ -7,12 +7,22 @@
 import React, { useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Alert, ActivityIndicator,
+  StyleSheet, Alert, ActivityIndicator, Platform,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useRouter } from "expo-router";
 import { createSession } from "../api/client";
 import { useInterviewStore } from "../store/interviewStore";
+
+/** DocumentPicker asset → FormData에 넣을 수 있는 형태로 변환 */
+function toFileField(asset: DocumentPicker.DocumentPickerAsset) {
+  // 웹: asset.file이 실제 File 객체
+  if (Platform.OS === "web" && (asset as any).file instanceof File) {
+    return (asset as any).file as File;
+  }
+  // 네이티브: {uri, name, type} 객체
+  return { uri: asset.uri, name: asset.name, type: asset.mimeType ?? "application/octet-stream" };
+}
 
 const DURATION_OPTIONS = [15, 30, 45];
 const TYPE_OPTIONS = ["신입", "경력"];
@@ -56,14 +66,8 @@ export default function SetupScreen() {
         job_title: jobTitle,
         interview_type: interviewType,
         duration_minutes: duration,
-        resume_file: {
-          uri: resumeFile.uri,
-          name: resumeFile.name,
-          type: resumeFile.mimeType ?? "application/pdf",
-        },
-        portfolio_file: portfolioFile
-          ? { uri: portfolioFile.uri, name: portfolioFile.name, type: "application/pdf" }
-          : null,
+        resume_file: toFileField(resumeFile),
+        portfolio_file: portfolioFile ? toFileField(portfolioFile) : null,
         portfolio_url: portfolioUrl || undefined,
       });
 

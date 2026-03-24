@@ -9,7 +9,7 @@
  *   - 기기 성능 분기 (3GB 미만 → 2D)는 그대로 유지
  */
 import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, StyleSheet, Alert, Dimensions } from "react-native";
+import { View, Text, StyleSheet, Alert, Dimensions, Platform } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import DeviceInfo from "react-native-device-info";
@@ -56,11 +56,16 @@ export default function InterviewScreen() {
   const { startRecording, stopRecording, isRecording } = useSTT();
   const { mouthOpen, isPlaying: isTTSPlaying, play: playTTS, stop: stopTTS } = useLipSync();
 
-  // 기기 성능 체크 (3GB 미만 → 2D 폴백)
+  // 기기 성능 체크 (3GB 미만 또는 웹 → 2D 폴백)
   useEffect(() => {
-    DeviceInfo.getTotalMemory().then((bytes) => {
-      setUse3D(bytes >= 3 * 1024 * 1024 * 1024);
-    });
+    if (Platform.OS === "web") {
+      // 웹: GLB 아바타 미지원 → 항상 2D
+      setUse3D(false);
+    } else {
+      DeviceInfo.getTotalMemory().then((bytes) => {
+        setUse3D(bytes >= 3 * 1024 * 1024 * 1024);
+      });
+    }
     requestPermission();
   }, []);
 

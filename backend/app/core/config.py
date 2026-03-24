@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = ""
     aws_s3_bucket: str = "myonterview-assets"
     aws_region: str = "us-east-1"
-    aws_s3_endpoint_url: str = ""  # 비어 있으면 AWS S3, 값 있으면 해당 엔드포인트 사용
+    aws_s3_endpoint_url: str = ""        # 컨테이너 내부 접속용 (업로드)  예: http://minio:9000
+    aws_s3_public_url: str = ""          # 브라우저 접속용 (다운로드)    예: http://localhost:9000
 
     # App
     secret_key: str = "change-me"
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"  # .env의 Docker 전용 변수(POSTGRES_USER 등) 무시
 
     @property
     def origins(self) -> list[str]:

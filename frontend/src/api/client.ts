@@ -41,13 +41,17 @@ export interface FeedbackResponse {
 
 // ── API 함수 ──────────────────────────────────────────────────
 
+type FileField =
+  | File                                      // 웹: 실제 File 객체
+  | { uri: string; name: string; type: string }; // 네이티브: RN 파일 객체
+
 export async function createSession(form: {
   company: string;
   job_title: string;
   interview_type: string;
   duration_minutes: number;
-  resume_file: { uri: string; name: string; type: string };
-  portfolio_file?: { uri: string; name: string; type: string } | null;
+  resume_file: FileField;
+  portfolio_file?: FileField | null;
   portfolio_url?: string;
 }): Promise<SessionResponse> {
   const data = new FormData();
@@ -60,7 +64,9 @@ export async function createSession(form: {
   if (form.portfolio_url) data.append("portfolio_url", form.portfolio_url);
 
   const res = await api.post<SessionResponse>("/api/session", data, {
-    headers: { "Content-Type": "multipart/form-data" },
+    // 웹에서는 Content-Type 헤더를 직접 지정하지 않아야
+    // axios/fetch가 boundary를 자동으로 설정함
+    headers: typeof document !== "undefined" ? {} : { "Content-Type": "multipart/form-data" },
   });
   return res.data;
 }
