@@ -19,7 +19,7 @@ async def transcribe(audio_bytes: bytes, suffix: str = ".webm") -> str:
     try:
         with open(tmp_path, "rb") as audio_file:
             result = await _client.audio.transcriptions.create(
-                model="whisper-1",
+                model=settings.openai_stt_model,
                 file=audio_file,
                 language="ko",
             )

@@ -11,10 +11,7 @@ class Settings(BaseSettings):
     # OpenAI Whisper STT
     openai_api_key: str
     openai_base_url: str = "https://api.openai.com/v1"
-
-    # Naver CLOVA TTS
-    naver_tts_client_id: str = ""
-    naver_tts_client_secret: str = ""
+    openai_stt_model: str = "whisper-1"  # Groq 사용 시: whisper-large-v3-turbo
 
     # Tavily
     tavily_api_key: str = ""
@@ -25,11 +22,12 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379"
 
-    # AWS S3
+    # Object Storage (S3-compatible — MinIO / R2 / B2 등)
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_s3_bucket: str = "myonterview-assets"
-    aws_region: str = "ap-northeast-2"
+    aws_region: str = "us-east-1"
+    aws_s3_endpoint_url: str = ""  # 비어 있으면 AWS S3, 값 있으면 해당 엔드포인트 사용
 
     # App
     secret_key: str = "change-me"
