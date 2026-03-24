@@ -1,14 +1,15 @@
 /**
- * 메인 면접 화면
- * - Facetime 레이아웃: 면접관 3명 (상단 그리드) + 사용자 카메라 (우측 하단)
- * - WebSocket으로 질문 수신 → TTS 재생 + 립싱크
- * - STT 녹음 → 답변 제출
- * - 저사양 기기: 2D 타일 / 고사양: Three.js (Phase 2)
+ * 메인 면접 화면 (Phase 2 업데이트)
+ *
+ * 변경 사항:
+ *   - avatarState 계산 후 InterviewerTile에 전달
+ *     · TTS 재생 중 활성 면접관 → "talking"
+ *     · 답변 대기 중 활성 면접관 → "thinking"
+ *     · 비활성 면접관            → "idle"
+ *   - 기기 성능 분기 (3GB 미만 → 2D)는 그대로 유지
  */
 import React, { useEffect, useState, useCallback } from "react";
-import {
-  View, Text, StyleSheet, Alert, Dimensions,
-} from "react-native";
+import { View, Text, StyleSheet, Alert, Dimensions } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import DeviceInfo from "react-native-device-info";
@@ -17,10 +18,29 @@ import { useInterviewStore } from "../store/interviewStore";
 import { useInterview } from "../hooks/useInterview";
 import { useSTT } from "../hooks/useSTT";
 import { useLipSync } from "../hooks/useLipSync";
+import { AvatarState } from "../hooks/useAvatarAnimation";
 import InterviewerTile from "../components/InterviewerTile";
 import ControlBar from "../components/ControlBar";
 
 const { width: SW } = Dimensions.get("window");
+
+/**
+ * 면접관 ID와 현재 상태를 바탕으로 AvatarState 결정
+ * - 활성 면접관이고 TTS가 재생 중이면 "talking"
+ * - 활성 면접관이고 사용자가 답변 중(또는 TTS 종료 후)이면 "thinking"
+ * - 비활성 면접관은 "idle"
+ */
+function getAvatarState(
+  interviewerId: number,
+  activeId: number | null,
+  isTTSPlaying: boolean,
+  isRecording: boolean
+): AvatarState {
+  if (interviewerId !== activeId) return "idle";
+  if (isTTSPlaying) return "talking";
+  if (isRecording) return "thinking";
+  return "idle";
+}
 
 export default function InterviewScreen() {
   const router = useRouter();
@@ -29,12 +49,12 @@ export default function InterviewScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
-  const [use3D, setUse3D] = useState(false);  // Phase 2에서 true로 전환
+  const [use3D, setUse3D] = useState(false);
 
   const store = useInterviewStore();
   const { sendAnswer, skipQuestion } = useInterview(sessionId);
   const { startRecording, stopRecording, isRecording } = useSTT();
-  const { mouthOpen, play: playTTS, stop: stopTTS } = useLipSync();
+  const { mouthOpen, isPlaying: isTTSPlaying, play: playTTS, stop: stopTTS } = useLipSync();
 
   // 기기 성능 체크 (3GB 미만 → 2D 폴백)
   useEffect(() => {
@@ -44,17 +64,16 @@ export default function InterviewScreen() {
     requestPermission();
   }, []);
 
-  // 새 질문이 오면 TTS 재생
+  // 새 질문이 오면 TTS 재생 → 완료 시 자동 녹음 시작
   const currentQuestion = store.currentQuestion;
   useEffect(() => {
     if (!currentQuestion?.audio_url) return;
     playTTS(currentQuestion.audio_url, () => {
-      // TTS 재생 완료 → 자동 녹음 시작
       if (isMicOn) startRecording();
     });
   }, [currentQuestion?.question_id]);
 
-  // 면접 종료 → 피드백 화면으로
+  // 면접 종료 → 피드백 화면으로 이동
   useEffect(() => {
     if (store.interviewDone) {
       router.replace({ pathname: "/feedback", params: { sessionId } });
@@ -65,19 +84,15 @@ export default function InterviewScreen() {
     if (!currentQuestion) return;
 
     if (!isRecording) {
-      // 녹음 시작
       await startRecording();
       store.setIsRecording(true);
       return;
     }
 
-    // 녹음 중지 → 제출
     store.setIsRecording(false);
     await stopTTS();
     const base64 = await stopRecording();
-    if (base64) {
-      sendAnswer(currentQuestion.question_id, base64);
-    }
+    if (base64) sendAnswer(currentQuestion.question_id, base64);
   }, [currentQuestion, isRecording]);
 
   const handleSkip = useCallback(async () => {
@@ -89,20 +104,22 @@ export default function InterviewScreen() {
   }, [currentQuestion, isRecording]);
 
   const handleEnd = useCallback(() => {
-    Alert.alert("면접 종료", "면접을 종료하시겠습니까? 지금까지의 답변으로 피드백이 생성됩니다.", [
-      { text: "취소", style: "cancel" },
-      {
-        text: "종료",
-        style: "destructive",
-        onPress: async () => {
-          await stopTTS();
-          if (isRecording) await stopRecording();
-          // WebSocket END_INTERVIEW는 useInterview 내부에서 INTERVIEW_DONE 이후 자동 전송
-          // 직접 종료 시에는 interviewDone을 강제 세팅
-          store.setInterviewDone(true);
+    Alert.alert(
+      "면접 종료",
+      "종료하시겠습니까? 지금까지의 답변으로 피드백이 생성됩니다.",
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "종료",
+          style: "destructive",
+          onPress: async () => {
+            await stopTTS();
+            if (isRecording) await stopRecording();
+            store.setInterviewDone(true);
+          },
         },
-      },
-    ]);
+      ]
+    );
   }, [isRecording]);
 
   const activeId = store.activeInterviewerId;
@@ -118,14 +135,15 @@ export default function InterviewScreen() {
         </View>
       )}
 
-      {/* 면접관 그리드 (상단) */}
+      {/* 면접관 그리드 */}
       <View style={styles.interviewersGrid}>
-        {[1, 2, 3].map((id) => (
+        {([1, 2, 3] as const).map((id) => (
           <InterviewerTile
             key={id}
             interviewerId={id}
             isActive={activeId === id}
-            mouthOpen={activeId === id ? mouthOpen : 0}
+            avatarState={getAvatarState(id, activeId, isTTSPlaying, isRecording)}
+            mouthOpen={mouthOpen}
             use3D={use3D}
           />
         ))}
@@ -138,7 +156,7 @@ export default function InterviewScreen() {
         </View>
       )}
 
-      {/* 사용자 카메라 (우측 하단) */}
+      {/* 사용자 카메라 (우측 하단 PiP) */}
       {isCamOn && permission?.granted && (
         <View style={styles.selfCamera}>
           <CameraView style={StyleSheet.absoluteFill} facing="front" />
@@ -182,7 +200,7 @@ const styles = StyleSheet.create({
   subtitleBox: {
     marginHorizontal: 16,
     marginBottom: 12,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.72)",
     borderRadius: 12,
     padding: 12,
   },
