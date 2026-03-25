@@ -1,4 +1,5 @@
 """WebSocket 면접 세션 실시간 이벤트 핸들러."""
+import asyncio
 import json
 import base64
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from app.services.stt_service import transcribe
 from app.tasks.celery_tasks import task_generate_feedback
 
 settings = get_settings()
+
+STT_TIMEOUT_SEC = 30  # STT 변환 최대 대기 시간
 
 
 class ConnectionManager:
@@ -46,15 +49,19 @@ async def _send_question(
     total: int,
     redis_client: aioredis.Redis,
 ):
-    """TTS 생성 후 QUESTION 이벤트 전송."""
-    audio_url = await generate_tts(question.text, question.interviewer_id, redis_client)
-
-    # audio_url을 DB에도 저장
-    async with AsyncSessionLocal() as db:
-        q = await db.get(Question, question.id)
-        if q:
-            q.audio_url = audio_url
-            await db.commit()
+    """TTS 생성 후 QUESTION 이벤트 전송. TTS 실패 시 audio_url=None으로 계속 진행."""
+    audio_url = None
+    try:
+        audio_url = await generate_tts(question.text, question.interviewer_id, redis_client)
+        # DB에도 저장
+        async with AsyncSessionLocal() as db:
+            q = await db.get(Question, question.id)
+            if q:
+                q.audio_url = audio_url
+                await db.commit()
+    except Exception as e:
+        # TTS 실패해도 텍스트 질문은 전송
+        pass
 
     await ws.send_text(json.dumps({
         "event": "QUESTION",
@@ -65,6 +72,17 @@ async def _send_question(
         "index": question.order_index + 1,
         "total": total,
     }, ensure_ascii=False))
+
+
+async def _prefetch_tts(questions: list[Question], redis_client: aioredis.Redis):
+    """나머지 질문들의 TTS를 백그라운드로 미리 생성해 Redis에 캐싱."""
+    async def _gen(q: Question):
+        try:
+            await generate_tts(q.text, q.interviewer_id, redis_client)
+        except Exception:
+            pass
+
+    await asyncio.gather(*[_gen(q) for q in questions], return_exceptions=True)
 
 
 async def interview_ws_handler(websocket: WebSocket, session_id: str):
@@ -99,6 +117,14 @@ async def interview_ws_handler(websocket: WebSocket, session_id: str):
                         .order_by(Question.order_index)
                     )
                     questions = result.scalars().all()
+
+                    # 이미 답변된 질문 ID 조회 (재연결 시 이어서 진행)
+                    ans_result = await db.execute(
+                        select(Answer.question_id)
+                        .where(Answer.session_id == session_id)
+                    )
+                    answered_ids = {row[0] for row in ans_result.fetchall()}
+
                     session = await db.get(InterviewSession, session_id)
                     session.status = SessionStatus.IN_PROGRESS
                     await db.commit()
@@ -111,8 +137,21 @@ async def interview_ws_handler(websocket: WebSocket, session_id: str):
                     }))
                     return
 
-                # 첫 번째 질문 전송
-                await _send_question(websocket, questions[0], len(questions), redis_client)
+                # 미답변 질문 목록
+                unanswered = [q for q in questions if q.id not in answered_ids]
+
+                if not unanswered:
+                    # 이미 모두 답변 완료 → 종료
+                    await websocket.send_text(json.dumps({"event": "INTERVIEW_DONE"}))
+                    continue
+
+                # 첫 번째 미답변 질문 전송
+                first_q = unanswered[0]
+                await _send_question(websocket, first_q, len(questions), redis_client)
+
+                # 나머지 질문 TTS 사전 생성 (백그라운드, 첫 질문 제외)
+                if len(unanswered) > 1:
+                    asyncio.create_task(_prefetch_tts(unanswered[1:], redis_client))
 
             # ── ANSWER_DONE ─────────────────────────────────────────────
             elif event == "ANSWER_DONE":
@@ -122,8 +161,16 @@ async def interview_ws_handler(websocket: WebSocket, session_id: str):
 
                 transcript = ""
                 if not skipped and audio_b64:
-                    audio_bytes = base64.b64decode(audio_b64)
-                    transcript = await transcribe(audio_bytes)
+                    try:
+                        audio_bytes = base64.b64decode(audio_b64)
+                        transcript = await asyncio.wait_for(
+                            transcribe(audio_bytes),
+                            timeout=STT_TIMEOUT_SEC,
+                        )
+                    except asyncio.TimeoutError:
+                        transcript = ""  # 타임아웃 시 빈 transcript로 계속 진행
+                    except Exception:
+                        transcript = ""
 
                 async with AsyncSessionLocal() as db:
                     answer = Answer(
@@ -149,16 +196,19 @@ async def interview_ws_handler(websocket: WebSocket, session_id: str):
                         .order_by(Question.order_index)
                     )
                     questions = result.scalars().all()
-                    answered_q = next((q for q in questions if q.id == question_id), None)
 
-                if answered_q:
-                    next_idx = answered_q.order_index + 1
-                    next_qs = [q for q in questions if q.order_index == next_idx]
-                    if next_qs:
-                        await _send_question(websocket, next_qs[0], len(questions), redis_client)
-                    else:
-                        # 마지막 질문 완료 → 면접 종료 신호
-                        await websocket.send_text(json.dumps({"event": "INTERVIEW_DONE"}))
+                    ans_result = await db.execute(
+                        select(Answer.question_id)
+                        .where(Answer.session_id == session_id)
+                    )
+                    answered_ids = {row[0] for row in ans_result.fetchall()}
+
+                unanswered = [q for q in questions if q.id not in answered_ids]
+
+                if unanswered:
+                    await _send_question(websocket, unanswered[0], len(questions), redis_client)
+                else:
+                    await websocket.send_text(json.dumps({"event": "INTERVIEW_DONE"}))
 
             # ── END_INTERVIEW ────────────────────────────────────────────
             elif event == "END_INTERVIEW":
@@ -169,7 +219,6 @@ async def interview_ws_handler(websocket: WebSocket, session_id: str):
                         session.ended_at = datetime.now(timezone.utc)
                         await db.commit()
 
-                # Celery로 피드백 생성 비동기 시작
                 task_generate_feedback.delay(session_id)
 
                 await websocket.send_text(json.dumps({
@@ -179,6 +228,15 @@ async def interview_ws_handler(websocket: WebSocket, session_id: str):
 
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        try:
+            await websocket.send_text(json.dumps({
+                "event": "ERROR",
+                "code": "SERVER_ERROR",
+                "message": str(e),
+            }))
+        except Exception:
+            pass
     finally:
         manager.disconnect(session_id)
         await redis_client.aclose()

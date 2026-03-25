@@ -35,6 +35,7 @@ def task_generate_questions(
     job_title: str,
     interview_type: str,
     portfolio_text: str = "",
+    interviewer_count: int = 3,
 ):
     """이력서·회사 정보 기반 질문을 생성하고 DB에 저장."""
     db = _Session()
@@ -45,6 +46,7 @@ def task_generate_questions(
             job_title=job_title,
             interview_type=interview_type,
             portfolio_text=portfolio_text or None,
+            interviewer_count=interviewer_count,
         )
 
         for idx, q in enumerate(questions_data):

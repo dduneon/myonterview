@@ -2,7 +2,7 @@
  * 사전 설정 화면
  * - 이력서 업로드 (PDF/DOCX)
  * - 포트폴리오 파일 또는 URL
- * - 회사명 / 직무명 / 면접 유형 / 예상 시간
+ * - 회사명 / 직무명 / 면접 유형 / 예상 시간 / 면접관 수
  */
 import React, { useState } from "react";
 import {
@@ -14,18 +14,16 @@ import { useRouter } from "expo-router";
 import { createSession } from "../api/client";
 import { useInterviewStore } from "../store/interviewStore";
 
-/** DocumentPicker asset → FormData에 넣을 수 있는 형태로 변환 */
 function toFileField(asset: DocumentPicker.DocumentPickerAsset) {
-  // 웹: asset.file이 실제 File 객체
   if (Platform.OS === "web" && (asset as any).file instanceof File) {
     return (asset as any).file as File;
   }
-  // 네이티브: {uri, name, type} 객체
   return { uri: asset.uri, name: asset.name, type: asset.mimeType ?? "application/octet-stream" };
 }
 
 const DURATION_OPTIONS = [15, 30, 45];
 const TYPE_OPTIONS = ["신입", "경력"];
+const INTERVIEWER_COUNT_OPTIONS = [1, 2, 3];
 
 export default function SetupScreen() {
   const router = useRouter();
@@ -35,6 +33,7 @@ export default function SetupScreen() {
   const [jobTitle, setJobTitle] = useState("");
   const [interviewType, setInterviewType] = useState("신입");
   const [duration, setDuration] = useState(30);
+  const [interviewerCount, setInterviewerCount] = useState(3);
   const [resumeFile, setResumeFile] = useState<any>(null);
   const [portfolioFile, setPortfolioFile] = useState<any>(null);
   const [portfolioUrl, setPortfolioUrl] = useState("");
@@ -48,9 +47,7 @@ export default function SetupScreen() {
   }
 
   async function pickPortfolio() {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["application/pdf"],
-    });
+    const result = await DocumentPicker.getDocumentAsync({ type: ["application/pdf"] });
     if (!result.canceled) setPortfolioFile(result.assets[0]);
   }
 
@@ -66,11 +63,11 @@ export default function SetupScreen() {
         job_title: jobTitle,
         interview_type: interviewType,
         duration_minutes: duration,
+        interviewer_count: interviewerCount,
         resume_file: toFileField(resumeFile),
         portfolio_file: portfolioFile ? toFileField(portfolioFile) : null,
         portfolio_url: portfolioUrl || undefined,
       });
-
       setSession(session);
       router.push({ pathname: "/loading", params: { sessionId: session.id } });
     } catch (e: any) {
@@ -101,7 +98,7 @@ export default function SetupScreen() {
         </Text>
       </TouchableOpacity>
       <TextInput
-        style={styles.input}
+        style={[styles.input, { marginTop: 8 }]}
         placeholder="또는 포트폴리오 URL 입력"
         placeholderTextColor="#666"
         value={portfolioUrl}
@@ -158,6 +155,22 @@ export default function SetupScreen() {
         ))}
       </View>
 
+      {/* 면접관 수 */}
+      <Text style={styles.label}>면접관 수</Text>
+      <View style={styles.row}>
+        {INTERVIEWER_COUNT_OPTIONS.map((n) => (
+          <TouchableOpacity
+            key={n}
+            style={[styles.chip, interviewerCount === n && styles.chipActive]}
+            onPress={() => setInterviewerCount(n)}
+          >
+            <Text style={[styles.chipText, interviewerCount === n && styles.chipTextActive]}>
+              {n}명
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* 시작 버튼 */}
       <TouchableOpacity
         style={[styles.startBtn, loading && styles.startBtnDisabled]}
@@ -180,41 +193,26 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, color: "#888", marginBottom: 32 },
   label: { fontSize: 13, color: "#aaa", marginBottom: 8, marginTop: 20 },
   input: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 14,
-    color: "#fff",
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: "#2a2a2a",
+    backgroundColor: "#1a1a1a", borderRadius: 12, padding: 14,
+    color: "#fff", fontSize: 15, borderWidth: 1, borderColor: "#2a2a2a",
   },
   uploadBtn: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#2a2a2a",
-    borderStyle: "dashed",
+    backgroundColor: "#1a1a1a", borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: "#2a2a2a", borderStyle: "dashed",
   },
   uploadText: { color: "#888", fontSize: 14 },
   row: { flexDirection: "row", gap: 10 },
   chip: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 999,
-    backgroundColor: "#1a1a1a",
-    borderWidth: 1,
-    borderColor: "#2a2a2a",
+    paddingVertical: 10, paddingHorizontal: 20,
+    borderRadius: 999, backgroundColor: "#1a1a1a",
+    borderWidth: 1, borderColor: "#2a2a2a",
   },
   chipActive: { backgroundColor: "#4f46e5", borderColor: "#4f46e5" },
   chipText: { color: "#888", fontSize: 14 },
   chipTextActive: { color: "#fff" },
   startBtn: {
-    marginTop: 40,
-    backgroundColor: "#4f46e5",
-    borderRadius: 14,
-    paddingVertical: 18,
-    alignItems: "center",
+    marginTop: 40, backgroundColor: "#4f46e5",
+    borderRadius: 14, paddingVertical: 18, alignItems: "center",
   },
   startBtnDisabled: { opacity: 0.6 },
   startBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },

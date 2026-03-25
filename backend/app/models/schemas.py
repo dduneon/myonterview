@@ -54,6 +54,8 @@ class InterviewSession(Base):
     resume_path = Column(String, nullable=True)
     portfolio_path = Column(String, nullable=True)
     portfolio_url = Column(String, nullable=True)
+    interviewer_count = Column(Integer, default=3, server_default="3")  # 면접관 수 (1~3)
+    recording_url = Column(String, nullable=True)   # 면접 녹화본 URL
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     ended_at = Column(DateTime(timezone=True), nullable=True)
 

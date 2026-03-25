@@ -16,6 +16,8 @@ export interface SessionResponse {
   status: "pending" | "questions_ready" | "in_progress" | "completed" | "failed";
   company: string;
   job_title: string;
+  interviewer_count: number;
+  recording_url: string | null;
 }
 
 export interface QuestionOut {
@@ -42,14 +44,15 @@ export interface FeedbackResponse {
 // ── API 함수 ──────────────────────────────────────────────────
 
 type FileField =
-  | File                                      // 웹: 실제 File 객체
-  | { uri: string; name: string; type: string }; // 네이티브: RN 파일 객체
+  | File
+  | { uri: string; name: string; type: string };
 
 export async function createSession(form: {
   company: string;
   job_title: string;
   interview_type: string;
   duration_minutes: number;
+  interviewer_count: number;
   resume_file: FileField;
   portfolio_file?: FileField | null;
   portfolio_url?: string;
@@ -59,13 +62,12 @@ export async function createSession(form: {
   data.append("job_title", form.job_title);
   data.append("interview_type", form.interview_type);
   data.append("duration_minutes", String(form.duration_minutes));
+  data.append("interviewer_count", String(form.interviewer_count));
   data.append("resume_file", form.resume_file as any);
   if (form.portfolio_file) data.append("portfolio_file", form.portfolio_file as any);
   if (form.portfolio_url) data.append("portfolio_url", form.portfolio_url);
 
   const res = await api.post<SessionResponse>("/api/session", data, {
-    // 웹에서는 Content-Type 헤더를 직접 지정하지 않아야
-    // axios/fetch가 boundary를 자동으로 설정함
     headers: typeof document !== "undefined" ? {} : { "Content-Type": "multipart/form-data" },
   });
   return res.data;
@@ -79,4 +81,15 @@ export async function getSession(sessionId: string): Promise<SessionResponse> {
 export async function getFeedback(sessionId: string): Promise<FeedbackResponse> {
   const res = await api.get<FeedbackResponse>(`/api/feedback/${sessionId}`);
   return res.data;
+}
+
+export async function uploadRecording(sessionId: string, blob: Blob): Promise<string> {
+  const data = new FormData();
+  data.append("recording", blob, `interview_${sessionId}.webm`);
+  const res = await api.post<{ recording_url: string }>(
+    `/api/session/${sessionId}/recording`,
+    data,
+    { headers: {}, timeout: 120_000 }
+  );
+  return res.data.recording_url;
 }

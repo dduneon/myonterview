@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.database import init_db
-from app.api import session, tts, stt, feedback
+from app.api import session, tts, stt, feedback, recording
 from app.ws.interview import interview_ws_handler
 
 settings = get_settings()
@@ -32,6 +32,7 @@ app.include_router(session.router)
 app.include_router(tts.router)
 app.include_router(stt.router)
 app.include_router(feedback.router)
+app.include_router(recording.router)
 
 
 # WebSocket

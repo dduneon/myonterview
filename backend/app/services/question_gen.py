@@ -71,6 +71,7 @@ def generate_questions(
     job_title: str,
     interview_type: str = "신입",
     portfolio_text: Optional[str] = None,
+    interviewer_count: int = 3,
 ) -> list[dict]:
     """질문 리스트를 생성하고 반환한다.
 
@@ -88,8 +89,9 @@ def generate_questions(
     if company_info:
         company_section = f"\n\n회사·직무 정보 (웹 검색 결과):\n{company_info[:2000]}"
 
+    active_personas = {k: v for k, v in INTERVIEWER_PERSONAS.items() if k <= interviewer_count}
     personas_text = "\n".join(
-        f"- 면접관 {k}번: {v}" for k, v in INTERVIEWER_PERSONAS.items()
+        f"- 면접관 {k}번: {v}" for k, v in active_personas.items()
     )
 
     prompt = f"""당신은 면접 질문 전문가입니다.
@@ -111,7 +113,7 @@ def generate_questions(
 위 정보를 바탕으로 면접 질문 10~13개를 생성해줘.
 - 카테고리 배분: intro 1~2개, technical 4~5개, behavioral 3~4개, situational 2~3개, closing 1개
 - 각 질문은 지원자의 실제 이력서·경험 기반 맞춤형으로 작성
-- 면접관 3명에게 균형 있게 배분 (각 페르소나 스타일 반영)
+- 면접관 {interviewer_count}명에게 균형 있게 배분 (각 페르소나 스타일 반영)
 - 한국어로 작성
 
 출력 형식 (JSON 배열만, 설명 없이):

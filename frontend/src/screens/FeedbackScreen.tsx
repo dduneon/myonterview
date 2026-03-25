@@ -3,11 +3,13 @@
  * - 전체 점수 + 카테고리별 점수
  * - 강점 / 개선점
  * - 질문별 상세 리뷰
- * - 피드백 미완성 시 3초마다 폴링
+ * - 피드백 미완성 시 3초마다 폴링 (최대 5분)
+ * - 녹화본 다운로드 버튼 (웹, 녹화 완료 시)
  */
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  ActivityIndicator, Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { getFeedback, FeedbackResponse } from "../api/client";
@@ -16,12 +18,14 @@ import { useInterviewStore } from "../store/interviewStore";
 const SCORE_COLOR = (s: number) =>
   s >= 80 ? "#4ade80" : s >= 60 ? "#fbbf24" : "#f87171";
 
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
 function ScoreBar({ label, score }: { label: string; score: number }) {
   return (
     <View style={styles.scoreRow}>
       <Text style={styles.scoreLabel}>{label}</Text>
       <View style={styles.barBg}>
-        <View style={[styles.barFill, { width: `${score}%`, backgroundColor: SCORE_COLOR(score) }]} />
+        <View style={[styles.barFill, { width: `${score}%` as any, backgroundColor: SCORE_COLOR(score) }]} />
       </View>
       <Text style={[styles.scoreNum, { color: SCORE_COLOR(score) }]}>{score}</Text>
     </View>
@@ -32,8 +36,10 @@ export default function FeedbackScreen() {
   const router = useRouter();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const clearSession = useInterviewStore((s) => s.clearSession);
+  const recordingUrl = useInterviewStore((s) => s.recordingUrl);
   const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pollFailed, setPollFailed] = useState(false);
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval>;
@@ -45,17 +51,28 @@ export default function FeedbackScreen() {
         setLoading(false);
         clearInterval(timer);
       } catch (e: any) {
-        if (e?.response?.status === 202) {
-          // 아직 생성 중 → 계속 폴링
-        } else {
+        if (e?.response?.status !== 202) {
           setLoading(false);
+          setPollFailed(true);
+          clearInterval(timer);
         }
       }
     }
 
     poll();
     timer = setInterval(poll, 3000);
-    return () => clearInterval(timer);
+
+    // 5분 타임아웃
+    const timeout = setTimeout(() => {
+      clearInterval(timer);
+      setLoading(false);
+      setPollFailed(true);
+    }, POLL_TIMEOUT_MS);
+
+    return () => {
+      clearInterval(timer);
+      clearTimeout(timeout);
+    };
   }, [sessionId]);
 
   function handleRestart() {
@@ -63,12 +80,25 @@ export default function FeedbackScreen() {
     router.replace("/");
   }
 
-  if (loading || !feedback) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#4f46e5" />
         <Text style={styles.loadingText}>피드백을 분석하고 있어요...</Text>
-        <Text style={styles.loadingSub}>Claude AI가 면접 내용을 평가 중입니다</Text>
+        <Text style={styles.loadingSub}>AI가 면접 내용을 평가 중입니다</Text>
+      </View>
+    );
+  }
+
+  if (pollFailed || !feedback) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={{ fontSize: 40, marginBottom: 16 }}>⚠️</Text>
+        <Text style={styles.loadingText}>피드백 생성에 실패했습니다</Text>
+        <Text style={styles.loadingSub}>잠시 후 다시 확인해주세요.</Text>
+        <TouchableOpacity style={[styles.restartBtn, { marginTop: 32 }]} onPress={handleRestart}>
+          <Text style={styles.restartBtnText}>처음으로 돌아가기</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -137,6 +167,21 @@ export default function FeedbackScreen() {
         </View>
       )}
 
+      {/* 녹화본 다운로드 (웹 + 녹화 URL 있을 때) */}
+      {recordingUrl && Platform.OS === "web" && (
+        <TouchableOpacity
+          style={styles.downloadBtn}
+          onPress={() => {
+            const a = document.createElement("a");
+            a.href = recordingUrl;
+            a.download = `interview_${sessionId}.webm`;
+            a.click();
+          }}
+        >
+          <Text style={styles.downloadBtnText}>🎥 면접 녹화본 다운로드</Text>
+        </TouchableOpacity>
+      )}
+
       {/* 다시 시작 */}
       <TouchableOpacity style={styles.restartBtn} onPress={handleRestart}>
         <Text style={styles.restartBtnText}>다시 시작하기</Text>
@@ -148,16 +193,16 @@ export default function FeedbackScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0a0a0a" },
   content: { padding: 20, paddingBottom: 60 },
-  loadingContainer: { flex: 1, backgroundColor: "#0a0a0a", alignItems: "center", justifyContent: "center" },
+  loadingContainer: {
+    flex: 1, backgroundColor: "#0a0a0a",
+    alignItems: "center", justifyContent: "center", padding: 24,
+  },
   loadingText: { marginTop: 24, fontSize: 18, color: "#fff", fontWeight: "600" },
   loadingSub: { marginTop: 8, fontSize: 14, color: "#666" },
   title: { fontSize: 26, fontWeight: "800", color: "#fff", marginTop: 48, marginBottom: 24 },
   overallCard: {
-    backgroundColor: "#141414",
-    borderRadius: 16,
-    padding: 24,
-    alignItems: "center",
-    marginBottom: 16,
+    backgroundColor: "#141414", borderRadius: 16, padding: 24,
+    alignItems: "center", marginBottom: 16,
   },
   overallLabel: { fontSize: 14, color: "#888", marginBottom: 8 },
   overallScore: { fontSize: 64, fontWeight: "800", lineHeight: 72 },
@@ -178,12 +223,15 @@ const styles = StyleSheet.create({
   qfIndex: { fontSize: 13, fontWeight: "700", color: "#888" },
   qfScore: { fontSize: 13, fontWeight: "700" },
   qfComment: { fontSize: 14, color: "#ccc", lineHeight: 20 },
+  downloadBtn: {
+    marginTop: 8, backgroundColor: "#1a1a1a",
+    borderRadius: 14, paddingVertical: 16, alignItems: "center",
+    borderWidth: 1, borderColor: "#333", marginBottom: 12,
+  },
+  downloadBtnText: { color: "#aaa", fontSize: 15, fontWeight: "600" },
   restartBtn: {
-    marginTop: 8,
-    backgroundColor: "#4f46e5",
-    borderRadius: 14,
-    paddingVertical: 18,
-    alignItems: "center",
+    marginTop: 8, backgroundColor: "#4f46e5",
+    borderRadius: 14, paddingVertical: 18, alignItems: "center",
   },
   restartBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },
 });

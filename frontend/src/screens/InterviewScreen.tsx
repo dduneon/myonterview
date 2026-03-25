@@ -1,15 +1,16 @@
 /**
- * 메인 면접 화면 (Phase 2 업데이트)
+ * 메인 면접 화면 (Phase 3 업데이트)
  *
- * 변경 사항:
- *   - avatarState 계산 후 InterviewerTile에 전달
- *     · TTS 재생 중 활성 면접관 → "talking"
- *     · 답변 대기 중 활성 면접관 → "thinking"
- *     · 비활성 면접관            → "idle"
- *   - 기기 성능 분기 (3GB 미만 → 2D)는 그대로 유지
+ * - 면접관 수 (session.interviewer_count) 기반 동적 타일 렌더링
+ * - WS 에러 모달 (재연결 실패 시)
+ * - 연결 중 배지 (재연결 시도 중)
+ * - 면접 녹화 (웹 MediaRecorder) → 종료 시 MinIO 업로드
  */
 import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, StyleSheet, Alert, Dimensions, Platform } from "react-native";
+import {
+  View, Text, StyleSheet, Alert, Dimensions,
+  Platform, TouchableOpacity, Modal,
+} from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import DeviceInfo from "react-native-device-info";
@@ -18,18 +19,14 @@ import { useInterviewStore } from "../store/interviewStore";
 import { useInterview } from "../hooks/useInterview";
 import { useSTT } from "../hooks/useSTT";
 import { useLipSync } from "../hooks/useLipSync";
+import { useRecording } from "../hooks/useRecording";
 import { AvatarState } from "../hooks/useAvatarAnimation";
 import InterviewerTile from "../components/InterviewerTile";
 import ControlBar from "../components/ControlBar";
+import { uploadRecording } from "../api/client";
 
 const { width: SW } = Dimensions.get("window");
 
-/**
- * 면접관 ID와 현재 상태를 바탕으로 AvatarState 결정
- * - 활성 면접관이고 TTS가 재생 중이면 "talking"
- * - 활성 면접관이고 사용자가 답변 중(또는 TTS 종료 후)이면 "thinking"
- * - 비활성 면접관은 "idle"
- */
 function getAvatarState(
   interviewerId: number,
   activeId: number | null,
@@ -52,14 +49,17 @@ export default function InterviewScreen() {
   const [use3D, setUse3D] = useState(false);
 
   const store = useInterviewStore();
-  const { sendAnswer, skipQuestion } = useInterview(sessionId);
+  const { sendAnswer, skipQuestion, wsConnected } = useInterview(sessionId);
   const { startRecording, stopRecording, isRecording } = useSTT();
   const { mouthOpen, isPlaying: isTTSPlaying, play: playTTS, stop: stopTTS } = useLipSync();
+  const { startRecording: startVideoRec, stopRecording: stopVideoRec } = useRecording();
 
-  // 기기 성능 체크 (3GB 미만 또는 웹 → 2D 폴백)
+  // 면접관 수 기반 타일 ID 목록
+  const interviewerCount = store.session?.interviewer_count ?? 3;
+  const interviewerIds = Array.from({ length: interviewerCount }, (_, i) => (i + 1) as 1 | 2 | 3);
+
   useEffect(() => {
     if (Platform.OS === "web") {
-      // 웹: GLB 아바타 미지원 → 항상 2D
       setUse3D(false);
     } else {
       DeviceInfo.getTotalMemory().then((bytes) => {
@@ -67,9 +67,10 @@ export default function InterviewScreen() {
       });
     }
     requestPermission();
+    startVideoRec();
   }, []);
 
-  // 새 질문이 오면 TTS 재생 → 완료 시 자동 녹음 시작
+  // 새 질문 → TTS 재생 → 완료 시 자동 녹음 시작
   const currentQuestion = store.currentQuestion;
   useEffect(() => {
     if (!currentQuestion?.audio_url) return;
@@ -78,22 +79,30 @@ export default function InterviewScreen() {
     });
   }, [currentQuestion?.question_id]);
 
-  // 면접 종료 → 피드백 화면으로 이동
+  // 면접 종료 → 녹화 업로드 → 피드백 화면 이동
   useEffect(() => {
-    if (store.interviewDone) {
+    if (!store.interviewDone) return;
+    (async () => {
+      try {
+        const blob = await stopVideoRec();
+        if (blob && sessionId) {
+          const url = await uploadRecording(sessionId, blob);
+          store.setRecordingUrl(url);
+        }
+      } catch {
+        // 녹화 업로드 실패 무시 — 피드백은 정상 진행
+      }
       router.replace({ pathname: "/feedback", params: { sessionId } });
-    }
+    })();
   }, [store.interviewDone]);
 
   const handleDone = useCallback(async () => {
     if (!currentQuestion) return;
-
     if (!isRecording) {
       await startRecording();
       store.setIsRecording(true);
       return;
     }
-
     store.setIsRecording(false);
     await stopTTS();
     const base64 = await stopRecording();
@@ -128,6 +137,7 @@ export default function InterviewScreen() {
   }, [isRecording]);
 
   const activeId = store.activeInterviewerId;
+  const wsError = store.wsError;
 
   return (
     <View style={styles.container}>
@@ -140,9 +150,20 @@ export default function InterviewScreen() {
         </View>
       )}
 
+      {/* 재연결 중 배지 */}
+      {!wsConnected && !wsError && (
+        <View style={styles.connectingBadge}>
+          <Text style={styles.connectingText}>🔄 연결 중...</Text>
+        </View>
+      )}
+
       {/* 면접관 그리드 */}
-      <View style={styles.interviewersGrid}>
-        {([1, 2, 3] as const).map((id) => (
+      <View style={[
+        styles.interviewersGrid,
+        interviewerCount === 1 && styles.gridSingle,
+        interviewerCount === 2 && styles.gridDouble,
+      ]}>
+        {interviewerIds.map((id) => (
           <InterviewerTile
             key={id}
             interviewerId={id}
@@ -161,7 +182,7 @@ export default function InterviewScreen() {
         </View>
       )}
 
-      {/* 사용자 카메라 (우측 하단 PiP) */}
+      {/* 사용자 카메라 PiP */}
       {isCamOn && permission?.granted && (
         <View style={styles.selfCamera}>
           <CameraView style={StyleSheet.absoluteFill} facing="front" />
@@ -179,6 +200,26 @@ export default function InterviewScreen() {
         onSkip={handleSkip}
         onEnd={handleEnd}
       />
+
+      {/* WS 에러 모달 */}
+      <Modal visible={!!wsError} transparent animationType="fade">
+        <View style={styles.errorOverlay}>
+          <View style={styles.errorCard}>
+            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.errorTitle}>연결이 끊어졌습니다</Text>
+            <Text style={styles.errorMsg}>{wsError}</Text>
+            <TouchableOpacity
+              style={styles.errorBtn}
+              onPress={() => {
+                store.setWsError(null);
+                router.replace("/");
+              }}
+            >
+              <Text style={styles.errorBtnText}>처음으로</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -186,39 +227,47 @@ export default function InterviewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0a0a0a" },
   progressBadge: {
-    position: "absolute",
-    top: 56,
-    right: 16,
+    position: "absolute", top: 56, right: 16,
     backgroundColor: "#1a1a1a",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    zIndex: 10,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 999, zIndex: 10,
   },
   progressText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
-  interviewersGrid: {
-    flexDirection: "row",
-    padding: 12,
-    paddingTop: 60,
-    flex: 1,
+  connectingBadge: {
+    position: "absolute", top: 56, left: 16,
+    backgroundColor: "#1a1a2e",
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 999, zIndex: 10,
   },
+  connectingText: { color: "#818cf8", fontSize: 12 },
+  interviewersGrid: {
+    flexDirection: "row", padding: 12, paddingTop: 60, flex: 1,
+  },
+  gridSingle: { justifyContent: "center" },
+  gridDouble: { justifyContent: "space-evenly" },
   subtitleBox: {
-    marginHorizontal: 16,
-    marginBottom: 12,
+    marginHorizontal: 16, marginBottom: 12,
     backgroundColor: "rgba(0,0,0,0.72)",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 12, padding: 12,
   },
   subtitleText: { color: "#fff", fontSize: 15, lineHeight: 22, textAlign: "center" },
   selfCamera: {
-    position: "absolute",
-    bottom: 100,
-    right: 16,
-    width: 90,
-    height: 130,
-    borderRadius: 12,
-    overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "#333",
+    position: "absolute", bottom: 100, right: 16,
+    width: 90, height: 130,
+    borderRadius: 12, overflow: "hidden",
+    borderWidth: 2, borderColor: "#333",
   },
+  errorOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.75)",
+    alignItems: "center", justifyContent: "center",
+  },
+  errorCard: {
+    backgroundColor: "#1a1a1a", borderRadius: 20,
+    padding: 32, width: "80%", alignItems: "center",
+  },
+  errorIcon: { fontSize: 40, marginBottom: 12 },
+  errorTitle: { fontSize: 18, color: "#fff", fontWeight: "700", marginBottom: 8 },
+  errorMsg: { fontSize: 14, color: "#888", textAlign: "center", marginBottom: 24, lineHeight: 20 },
+  errorBtn: { backgroundColor: "#4f46e5", borderRadius: 12, paddingVertical: 12, paddingHorizontal: 28 },
+  errorBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

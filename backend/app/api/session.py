@@ -27,6 +27,8 @@ class SessionResponse(BaseModel):
     status: str
     company: str
     job_title: str
+    interviewer_count: int = 3
+    recording_url: str | None = None
 
 
 @router.post("", response_model=SessionResponse)
@@ -35,6 +37,7 @@ async def create_session(
     job_title: str = Form(...),
     interview_type: str = Form("신입"),
     duration_minutes: int = Form(30),
+    interviewer_count: int = Form(3),
     resume_file: UploadFile = File(...),
     portfolio_file: Optional[UploadFile] = File(None),
     portfolio_url: Optional[str] = Form(None),
@@ -63,6 +66,7 @@ async def create_session(
         job_title=job_title,
         interview_type=interview_type,
         duration_minutes=duration_minutes,
+        interviewer_count=interviewer_count,
         portfolio_url=portfolio_url,
         status=SessionStatus.PENDING,
     )
@@ -78,6 +82,7 @@ async def create_session(
         job_title=job_title,
         interview_type=interview_type,
         portfolio_text=portfolio_text,
+        interviewer_count=interviewer_count,
     )
 
     return SessionResponse(
@@ -85,6 +90,7 @@ async def create_session(
         status=session.status.value,
         company=session.company,
         job_title=session.job_title,
+        interviewer_count=session.interviewer_count,
     )
 
 
@@ -98,6 +104,7 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
         status=session.status.value,
         company=session.company,
         job_title=session.job_title,
+        interviewer_count=session.interviewer_count,
     )
 
 

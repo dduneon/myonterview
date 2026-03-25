@@ -4,39 +4,39 @@ import { FeedbackResponse, QuestionOut, SessionResponse } from "../api/client";
 interface WSQuestion {
   question_id: string;
   text: string;
-  audio_url: string;
+  audio_url: string | null;
   interviewer_id: number;
   index: number;
   total: number;
 }
 
 interface InterviewStore {
-  // 세션
   session: SessionResponse | null;
   setSession: (s: SessionResponse) => void;
   clearSession: () => void;
 
-  // 질문 진행
   currentQuestion: WSQuestion | null;
   setCurrentQuestion: (q: WSQuestion | null) => void;
   answeredCount: number;
   incrementAnswered: () => void;
 
-  // 활성 면접관 (립싱크/하이라이트용)
   activeInterviewerId: number | null;
   setActiveInterviewer: (id: number | null) => void;
 
-  // 녹음 상태
   isRecording: boolean;
   setIsRecording: (v: boolean) => void;
 
-  // 피드백
   feedback: FeedbackResponse | null;
   setFeedback: (f: FeedbackResponse) => void;
 
-  // 면접 종료 여부
   interviewDone: boolean;
   setInterviewDone: (v: boolean) => void;
+
+  wsError: string | null;
+  setWsError: (msg: string | null) => void;
+
+  recordingUrl: string | null;
+  setRecordingUrl: (url: string | null) => void;
 }
 
 export const useInterviewStore = create<InterviewStore>((set) => ({
@@ -51,6 +51,8 @@ export const useInterviewStore = create<InterviewStore>((set) => ({
       isRecording: false,
       feedback: null,
       interviewDone: false,
+      wsError: null,
+      recordingUrl: null,
     }),
 
   currentQuestion: null,
@@ -69,4 +71,10 @@ export const useInterviewStore = create<InterviewStore>((set) => ({
 
   interviewDone: false,
   setInterviewDone: (v) => set({ interviewDone: v }),
+
+  wsError: null,
+  setWsError: (msg) => set({ wsError: msg }),
+
+  recordingUrl: null,
+  setRecordingUrl: (url) => set({ recordingUrl: url }),
 }));
