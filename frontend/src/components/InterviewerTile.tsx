@@ -80,8 +80,8 @@ export default function InterviewerTile({
   return (
     <View style={[styles.tile, isActive && styles.tileActive]}>
       {/* 아바타 영역 */}
-      {showWeb3D ? (
-        <AvatarCanvasWeb!
+      {showWeb3D && AvatarCanvasWeb ? (
+        <AvatarCanvasWeb
           url={remoteUrl}
           avatarState={avatarState}
           mouthOpen={isActive ? mouthOpen : 0}

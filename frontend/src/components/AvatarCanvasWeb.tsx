@@ -9,6 +9,7 @@
 import React, { Suspense, useEffect, useRef } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import * as THREE from "three";
 import { AvatarState } from "../hooks/useAvatarAnimation";
 
@@ -22,7 +23,9 @@ interface ModelProps {
 }
 
 function AvatarModel({ url, avatarState, mouthOpen }: ModelProps) {
-  const gltf = useLoader(GLTFLoader, url);
+  const gltf = useLoader(GLTFLoader, url, (loader) => {
+    loader.setMeshoptDecoder(MeshoptDecoder);
+  });
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const meshesRef = useRef<THREE.SkinnedMesh[]>([]);
 
