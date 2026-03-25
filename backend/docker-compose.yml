@@ -73,7 +73,7 @@ services:
       retries: 5
 
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest   # v1.x — Korean voices 포함
     ports:
       - "8880:8880"
     restart: unless-stopped

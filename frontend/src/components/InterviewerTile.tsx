@@ -1,19 +1,28 @@
 /**
- * 면접관 타일 컴포넌트 (Phase 2 업데이트)
+ * 면접관 타일 컴포넌트
  *
- * - 고사양 (3GB RAM 이상): AvatarCanvas로 3D GLB 아바타 렌더링
- * - 저사양 폴백:           2D 이미지 + 볼륨 기반 입 모양 오버레이
- *
- * avatarState는 부모(InterviewScreen)에서 전달:
- *   - 활성 면접관 & TTS 재생 중 → "talking"
- *   - 활성 면접관 & 답변 대기 중 → "thinking"
- *   - 비활성 면접관           → "idle"
+ * 렌더링 전략:
+ *   웹(브라우저) : AvatarCanvasWeb — @react-three/fiber 웹 Canvas, 원격 URL 직접 로드
+ *   네이티브 고사양: AvatarCanvas  — expo-gl + Three.js, 로컬 캐시 GLB
+ *   네이티브 저사양: 2D 이미지 + 볼륨 기반 입 모양 오버레이
  */
 import React, { useEffect, useState } from "react";
-import { View, Text, Image, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet, Platform } from "react-native";
 import AvatarCanvas from "./AvatarCanvas";
 import { AvatarState } from "../hooks/useAvatarAnimation";
 import { loadAvatarGlb } from "../utils/avatarCache";
+
+// 웹에서만 웹 전용 Canvas 로드 (expo-gl 없이 동작)
+let AvatarCanvasWeb: React.ComponentType<{
+  url: string | null;
+  avatarState: AvatarState;
+  mouthOpen: number;
+  style?: any;
+}> | null = null;
+if (Platform.OS === "web") {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  AvatarCanvasWeb = require("./AvatarCanvasWeb").default;
+}
 
 // S3에 업로드된 경량화 GLB URL (배포 시 실제 URL로 교체)
 const AVATAR_REMOTE_URLS: Record<number, string> = {
@@ -52,22 +61,33 @@ export default function InterviewerTile({
   avatarImageUri,
 }: Props) {
   const [glbUri, setGlbUri] = useState<string | null>(null);
+  const remoteUrl = AVATAR_REMOTE_URLS[interviewerId] || null;
+  const isWeb = Platform.OS === "web";
 
-  // 3D 모드일 때 GLB 캐시 로드
+  // 네이티브 3D: GLB 로컬 캐시 로드
   useEffect(() => {
-    if (!use3D) return;
-    const remoteUrl = AVATAR_REMOTE_URLS[interviewerId];
-    if (!remoteUrl) return;
-
+    if (isWeb || !use3D || !remoteUrl) return;
     loadAvatarGlb(`interviewer_${interviewerId}`, remoteUrl)
       .then(setGlbUri)
       .catch((e) => console.warn(`[InterviewerTile] GLB 로드 실패 (id=${interviewerId}):`, e));
-  }, [use3D, interviewerId]);
+  }, [use3D, interviewerId, isWeb]);
+
+  // 웹 3D: AvatarCanvasWeb으로 원격 URL 직접 로드
+  const showWeb3D = isWeb && use3D && AvatarCanvasWeb;
+  // 네이티브 3D: expo-gl + 로컬 캐시
+  const showNative3D = !isWeb && use3D;
 
   return (
     <View style={[styles.tile, isActive && styles.tileActive]}>
       {/* 아바타 영역 */}
-      {use3D ? (
+      {showWeb3D ? (
+        <AvatarCanvasWeb!
+          url={remoteUrl}
+          avatarState={avatarState}
+          mouthOpen={isActive ? mouthOpen : 0}
+          style={styles.canvas3D}
+        />
+      ) : showNative3D ? (
         <AvatarCanvas
           glbUri={glbUri}
           avatarState={avatarState}

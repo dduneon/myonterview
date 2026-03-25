@@ -60,7 +60,13 @@ export default function InterviewScreen() {
 
   useEffect(() => {
     if (Platform.OS === "web") {
-      setUse3D(false);
+      // 웹은 @react-three/fiber 웹 Canvas 사용 — GLB URL이 있으면 3D 활성화
+      const hasAvatarUrls = !!(
+        process.env.EXPO_PUBLIC_AVATAR_URL_1 ||
+        process.env.EXPO_PUBLIC_AVATAR_URL_2 ||
+        process.env.EXPO_PUBLIC_AVATAR_URL_3
+      );
+      setUse3D(hasAvatarUrls);
     } else {
       DeviceInfo.getTotalMemory().then((bytes) => {
         setUse3D(bytes >= 3 * 1024 * 1024 * 1024);
