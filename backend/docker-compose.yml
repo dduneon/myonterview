@@ -8,6 +8,7 @@ services:
     env_file: .env
     volumes:
       - ./app:/app/app
+      - supertonic_cache:/root/.cache/supertonic   # 모델 캐시 (재시작 시 재다운로드 방지)
     depends_on:
       db:
         condition: service_healthy
@@ -95,3 +96,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  supertonic_cache:
