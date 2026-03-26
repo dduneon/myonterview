@@ -14,8 +14,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      kokoro:
-        condition: service_started
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   worker:
@@ -72,12 +70,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-  kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest   # v1.x — Korean voices 포함
-    ports:
-      - "8880:8880"
-    restart: unless-stopped
 
   # 최초 실행 시 버킷 자동 생성
   minio-init:

@@ -30,9 +30,6 @@ class Settings(BaseSettings):
     aws_s3_endpoint_url: str = ""        # 컨테이너 내부 접속용 (업로드)  예: http://minio:9000
     aws_s3_public_url: str = ""          # 브라우저 접속용 (다운로드)    예: http://localhost:9000
 
-    # TTS — Kokoro (OpenAI-compatible /v1/audio/speech)
-    kokoro_url: str = "http://kokoro:8880"
-
     # App
     secret_key: str = "change-me"
     allowed_origins: str = "http://localhost:3000"
