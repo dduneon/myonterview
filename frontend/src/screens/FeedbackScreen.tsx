@@ -110,8 +110,8 @@ export default function FeedbackScreen() {
       {/* 전체 점수 */}
       <View style={styles.overallCard}>
         <Text style={styles.overallLabel}>종합 점수</Text>
-        <Text style={[styles.overallScore, { color: SCORE_COLOR(feedback.overall_score) }]}>
-          {feedback.overall_score}
+        <Text style={[styles.overallScore, { color: SCORE_COLOR(feedback.overall_score ?? 0) }]}>
+          {feedback.overall_score ?? "-"}
         </Text>
         <Text style={styles.overallMax}>/ 100</Text>
       </View>
@@ -119,17 +119,17 @@ export default function FeedbackScreen() {
       {/* 카테고리별 점수 */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>카테고리별 점수</Text>
-        <ScoreBar label="답변 구조" score={feedback.structure_score} />
-        <ScoreBar label="구체성" score={feedback.specificity_score} />
-        <ScoreBar label="직무 적합성" score={feedback.job_fit_score} />
-        <ScoreBar label="커뮤니케이션" score={feedback.communication_score} />
+        <ScoreBar label="답변 구조" score={feedback.structure_score ?? 0} />
+        <ScoreBar label="구체성" score={feedback.specificity_score ?? 0} />
+        <ScoreBar label="직무 적합성" score={feedback.job_fit_score ?? 0} />
+        <ScoreBar label="커뮤니케이션" score={feedback.communication_score ?? 0} />
       </View>
 
       {/* 강점 */}
-      {feedback.strengths.length > 0 && (
+      {(feedback.strengths ?? []).length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>잘한 점</Text>
-          {feedback.strengths.map((s, i) => (
+          {(feedback.strengths ?? []).map((s, i) => (
             <View key={i} style={styles.bulletRow}>
               <Text style={styles.bulletGreen}>✓</Text>
               <Text style={styles.bulletText}>{s}</Text>
@@ -139,10 +139,10 @@ export default function FeedbackScreen() {
       )}
 
       {/* 개선점 */}
-      {feedback.improvements.length > 0 && (
+      {(feedback.improvements ?? []).length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>개선할 점</Text>
-          {feedback.improvements.map((s, i) => (
+          {(feedback.improvements ?? []).map((s, i) => (
             <View key={i} style={styles.bulletRow}>
               <Text style={styles.bulletYellow}>→</Text>
               <Text style={styles.bulletText}>{s}</Text>
@@ -152,10 +152,10 @@ export default function FeedbackScreen() {
       )}
 
       {/* 질문별 상세 리뷰 */}
-      {feedback.question_feedbacks.length > 0 && (
+      {(feedback.question_feedbacks ?? []).length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>질문별 상세 리뷰</Text>
-          {feedback.question_feedbacks.map((qf, i) => (
+          {(feedback.question_feedbacks ?? []).map((qf, i) => (
             <View key={i} style={styles.qfRow}>
               <View style={styles.qfHeader}>
                 <Text style={styles.qfIndex}>Q{qf.question_id_index + 1}</Text>
