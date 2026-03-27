@@ -26,7 +26,7 @@ _engine = create_engine(_sync_db_url)
 _Session = sessionmaker(bind=_engine)
 
 
-@celery_app.task(bind=True, max_retries=2)
+@celery_app.task(bind=True, max_retries=5)
 def task_generate_questions(
     self,
     session_id: str,
@@ -70,12 +70,14 @@ def task_generate_questions(
         if session:
             session.status = SessionStatus.FAILED
         db.commit()
-        raise self.retry(exc=exc, countdown=5)
+        # rate limit 감지 시 대기 시간 늘림 (지수 백오프)
+        wait = 10 * (2 ** self.request.retries)  # 10s → 20s → 40s → 80s → 160s
+        raise self.retry(exc=exc, countdown=wait)
     finally:
         db.close()
 
 
-@celery_app.task(bind=True, max_retries=2)
+@celery_app.task(bind=True, max_retries=3)
 def task_generate_feedback(self, session_id: str):
     """면접 세션의 Q&A를 평가하고 피드백 DB에 저장."""
     db = _Session()
@@ -114,6 +116,7 @@ def task_generate_feedback(self, session_id: str):
         db.commit()
     except Exception as exc:
         db.rollback()
-        raise self.retry(exc=exc, countdown=10)
+        wait = 15 * (2 ** self.request.retries)  # 15s → 30s → 60s
+        raise self.retry(exc=exc, countdown=wait)
     finally:
         db.close()

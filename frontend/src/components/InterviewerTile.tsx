@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 2,
     borderColor: "transparent",
-    minHeight: 180,
+    minHeight: 220,
   },
   tileActive: {
     borderColor: "#4f46e5",
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   // 3D 캔버스
   canvas3D: {
     width: "100%",
-    height: 140,
+    height: 180,
     borderRadius: 12,
   },
 

@@ -46,7 +46,8 @@ export default function InterviewScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
-  const [use3D, setUse3D] = useState(false);
+  // 웹은 항상 3D 시도 (AvatarCanvasWeb이 URL 없으면 placeholder 표시)
+  const [use3D, setUse3D] = useState(Platform.OS === "web");
 
   const store = useInterviewStore();
   const { sendAnswer, skipQuestion, wsConnected } = useInterview(sessionId);
@@ -59,15 +60,7 @@ export default function InterviewScreen() {
   const interviewerIds = Array.from({ length: interviewerCount }, (_, i) => (i + 1) as 1 | 2 | 3);
 
   useEffect(() => {
-    if (Platform.OS === "web") {
-      // 웹은 @react-three/fiber 웹 Canvas 사용 — GLB URL이 있으면 3D 활성화
-      const hasAvatarUrls = !!(
-        process.env.EXPO_PUBLIC_AVATAR_URL_1 ||
-        process.env.EXPO_PUBLIC_AVATAR_URL_2 ||
-        process.env.EXPO_PUBLIC_AVATAR_URL_3
-      );
-      setUse3D(hasAvatarUrls);
-    } else {
+    if (Platform.OS !== "web") {
       DeviceInfo.getTotalMemory().then((bytes) => {
         setUse3D(bytes >= 3 * 1024 * 1024 * 1024);
       });
