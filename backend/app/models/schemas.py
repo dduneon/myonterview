@@ -24,6 +24,7 @@ class QuestionCategory(str, enum.Enum):
     TECHNICAL = "technical"
     BEHAVIORAL = "behavioral"
     SITUATIONAL = "situational"
+    COMPANY_SPECIFIC = "company_specific"   # 회사·직무 특화 질문
     CLOSING = "closing"
 
 
