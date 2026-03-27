@@ -53,7 +53,7 @@ def task_generate_questions(
             question = Question(
                 session_id=session_id,
                 text=q["text"],
-                category=QuestionCategory(q["category"]),
+                category=QuestionCategory(q["category"].lower()),  # LLM이 대문자로 반환할 수 있어 정규화
                 interviewer_id=q["interviewer_id"],
                 order_index=idx,
             )

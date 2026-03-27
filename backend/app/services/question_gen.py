@@ -163,8 +163,9 @@ def generate_questions(
 - 한국어로 작성
 
 출력 형식 (JSON 배열만, 설명 없이):
+※ category 값은 반드시 소문자: intro / technical / behavioral / situational / company_specific / closing
 [
-  {{"text": "질문 내용", "category": "intro|technical|behavioral|situational|company_specific|closing", "interviewer_id": 1}}
+  {{"text": "질문 내용", "category": "company_specific", "interviewer_id": 1}}
 ]"""
 
     response = _llm.chat.completions.create(
