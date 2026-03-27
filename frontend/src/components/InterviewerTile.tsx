@@ -1,8 +1,11 @@
 /**
  * 면접관 타일 컴포넌트
  *
+ * size="main"  : FaceTime 메인 타일 — 발화 중인 면접관, 화면 대부분 차지
+ * size="thumb" : 썸네일 타일 — 비발화 면접관, 우측 상단 소형
+ *
  * 렌더링 전략:
- *   웹(브라우저) : AvatarCanvasWeb — @react-three/fiber 웹 Canvas, 원격 URL 직접 로드
+ *   웹(브라우저) : AvatarCanvasWeb — 순수 Three.js
  *   네이티브 고사양: AvatarCanvas  — expo-gl + Three.js, 로컬 캐시 GLB
  *   네이티브 저사양: 2D 이미지 + 볼륨 기반 입 모양 오버레이
  */
@@ -17,6 +20,7 @@ let AvatarCanvasWeb: React.ComponentType<{
   url: string | null;
   avatarState: AvatarState;
   mouthOpen: number;
+  headshot?: boolean;
   style?: any;
 }> | null = null;
 if (Platform.OS === "web") {
@@ -49,6 +53,7 @@ interface Props {
   avatarState: AvatarState;
   mouthOpen: number;        // 0~1
   use3D: boolean;
+  size?: "main" | "thumb";
   avatarImageUri?: string;  // 2D 폴백 이미지 URI
 }
 
@@ -58,11 +63,13 @@ export default function InterviewerTile({
   avatarState,
   mouthOpen,
   use3D,
+  size = "main",
   avatarImageUri,
 }: Props) {
   const [glbUri, setGlbUri] = useState<string | null>(null);
   const remoteUrl = AVATAR_REMOTE_URLS[interviewerId] || null;
   const isWeb = Platform.OS === "web";
+  const isMain = size === "main";
 
   // 네이티브 3D: GLB 로컬 캐시 로드
   useEffect(() => {
@@ -78,23 +85,35 @@ export default function InterviewerTile({
   const showNative3D = !isWeb && use3D;
 
   return (
-    <View style={[styles.tile, isActive && styles.tileActive]}>
-      {/* 아바타 영역 */}
+    <View style={[
+      styles.tile,
+      isMain ? styles.tileMain : styles.tileThumb,
+      isActive && styles.tileActive,
+    ]}>
+      {/* 아바타 영역 — 타일 전체를 채움 */}
       {showWeb3D && AvatarCanvasWeb ? (
         <AvatarCanvasWeb
           url={remoteUrl}
           avatarState={avatarState}
           mouthOpen={isActive ? mouthOpen : 0}
-          style={styles.canvas3D}
+          headshot={isMain}
+          style={
+            isMain
+              // flex:1 부모에서 height:100%가 0으로 resolve → absolute로 꽉 채움
+              ? { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%" }
+              // thumb은 부모(108×140 고정)가 있어 100%가 정상 동작
+              : { width: "100%", height: "100%" }
+          }
         />
       ) : showNative3D ? (
         <AvatarCanvas
           glbUri={glbUri}
           avatarState={avatarState}
           mouthOpen={isActive ? mouthOpen : 0}
-          style={styles.canvas3D}
+          style={styles.canvasNative}
         />
       ) : (
+        /* 2D 폴백 */
         <View style={styles.avatarArea2D}>
           {avatarImageUri ? (
             <Image source={{ uri: avatarImageUri }} style={styles.avatar2D} resizeMode="cover" />
@@ -103,7 +122,6 @@ export default function InterviewerTile({
               <Text style={styles.initial}>{NAMES[interviewerId]?.[0] ?? "?"}</Text>
             </View>
           )}
-
           {/* 2D 립싱크: 입 모양 오버레이 */}
           {isActive && avatarState === "talking" && (
             <View style={[styles.mouth, { height: Math.max(2, mouthOpen * 14) }]} />
@@ -111,49 +129,52 @@ export default function InterviewerTile({
         </View>
       )}
 
-      {/* 이름 + 역할 */}
-      <View style={styles.nameArea}>
-        <Text style={[styles.name, isActive && styles.nameActive]}>
+      {/* 이름 배지 — FaceTime 스타일 좌하단 오버레이 */}
+      <View style={[styles.nameBadge, !isMain && styles.nameBadgeThumb]}>
+        <Text style={[styles.nameText, !isMain && styles.nameTextThumb]} numberOfLines={1}>
           {NAMES[interviewerId] ?? `면접관 ${interviewerId}`}
         </Text>
-        <Text style={styles.role}>{ROLES[interviewerId]}</Text>
+        {isMain && (
+          <Text style={styles.roleText}>{ROLES[interviewerId]}</Text>
+        )}
       </View>
 
-      {/* 활성 상태 인디케이터 */}
-      {isActive && <View style={styles.activeDot} />}
+      {/* 발화 중 표시 — 테두리 맥동 대신 좌상단 초록 점 */}
+      {isActive && <View style={[styles.speakDot, !isMain && styles.speakDotThumb]} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   tile: {
-    flex: 1,
-    margin: 6,
-    borderRadius: 16,
+    borderRadius: 20,
     backgroundColor: "#141414",
-    alignItems: "center",
     overflow: "hidden",
     borderWidth: 2,
     borderColor: "transparent",
-    minHeight: 220,
+    position: "relative",
+  },
+  tileMain: {
+    flex: 1,
+  },
+  tileThumb: {
+    width: 108,
+    height: 140,
+    borderRadius: 14,
   },
   tileActive: {
-    borderColor: "#4f46e5",
-    backgroundColor: "#1a1832",
+    borderColor: "#6366f1",
   },
 
-  // 3D 캔버스
-  canvas3D: {
-    width: "100%",
-    height: 180,
-    borderRadius: 12,
+  // 네이티브 3D 캔버스 (전체 채움)
+  canvasNative: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
   },
 
   // 2D 폴백
   avatarArea2D: {
-    width: 90,
-    height: 90,
-    marginTop: 16,
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -176,20 +197,46 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
-  // 이름
-  nameArea: { marginTop: 8, marginBottom: 10, alignItems: "center" },
-  name: { fontSize: 12, color: "#666", fontWeight: "500" },
-  nameActive: { color: "#a5b4fc", fontWeight: "700" },
-  role: { fontSize: 10, color: "#444", marginTop: 2 },
-
-  // 활성 점
-  activeDot: {
+  // FaceTime 스타일 이름 배지
+  nameBadge: {
     position: "absolute",
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    bottom: 14,
+    left: 14,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  nameBadgeThumb: {
+    bottom: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  nameText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  nameTextThumb: { fontSize: 10 },
+  roleText: { color: "rgba(255,255,255,0.6)", fontSize: 11, marginTop: 1 },
+
+  // 발화 중 초록 점
+  speakDot: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: "#4ade80",
+    shadowColor: "#4ade80",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+  },
+  speakDotThumb: {
+    top: 7,
+    right: 7,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
 });

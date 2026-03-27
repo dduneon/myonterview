@@ -4,6 +4,9 @@
  * @react-three/fiber 없이 Three.js를 직접 사용.
  * React Native Web reconciler와 R3F reconciler 충돌을 우회.
  * Platform.OS === 'web' 인 경우에만 import됨.
+ *
+ * headshot=true : 얼굴 클로즈업 (FaceTime 메인 타일)
+ * headshot=false: 전신/반신 (썸네일)
  */
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
@@ -13,10 +16,16 @@ import { AvatarState } from "../hooks/useAvatarAnimation";
 
 const MOUTH_TARGETS = ["mouthOpen", "viseme_aa", "jawOpen"];
 
+// 카메라 프리셋
+// 모델 좌표: 중앙 정렬 후 y+0.5 → 발:-0.35, 허리:0.5, 얼굴:~1.1, 머리꼭대기:1.35
+const CAM_HEADSHOT = { fov: 24, px: 0, py: 1.18, pz: 1.05, lx: 0, ly: 1.05, lz: 0 }; // 얼굴+어깨 portrait
+const CAM_NORMAL   = { fov: 38, px: 0, py: 0.8,  pz: 2.2,  lx: 0, ly: 0.6,  lz: 0 }; // 전신 thumbnail
+
 interface Props {
   url: string | null;
   avatarState: AvatarState;
   mouthOpen: number;
+  headshot?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -32,15 +41,25 @@ interface SceneState {
   model: THREE.Object3D | null;
 }
 
+function applyCameraPreset(camera: THREE.PerspectiveCamera, headshot: boolean) {
+  const p = headshot ? CAM_HEADSHOT : CAM_NORMAL;
+  camera.fov = p.fov;
+  camera.position.set(p.px, p.py, p.pz);
+  camera.lookAt(p.lx, p.ly, p.lz);
+  camera.updateProjectionMatrix();
+}
+
 export default function AvatarCanvasWeb({
   url,
   avatarState,
   mouthOpen,
+  headshot = false,
   style,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneState | null>(null);
   const mouthOpenRef = useRef(mouthOpen);
+  const headshotRef = useRef(headshot);
 
   // mouthOpen 최신값 ref 유지 (렌더루프에서 사용)
   useEffect(() => {
@@ -55,41 +74,56 @@ export default function AvatarCanvasWeb({
     }
   }, [mouthOpen]);
 
+  // headshot 변경 시 카메라 즉시 업데이트
+  useEffect(() => {
+    headshotRef.current = headshot;
+    const state = sceneRef.current;
+    if (!state) return;
+    applyCameraPreset(state.camera, headshot);
+  }, [headshot]);
+
   // Three.js 초기화
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const W = container.clientWidth || 320;
-    const H = container.clientHeight || 180;
+    const H = container.clientHeight || 400;
 
     // ── 렌더러
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W, H);
     renderer.domElement.style.cssText =
-      "display:block;width:100%;height:100%;border-radius:12px;";
+      "display:block;width:100%;height:100%;";
     container.appendChild(renderer.domElement);
 
     // ── 씬 & 카메라
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(35, W / H, 0.1, 100);
-    camera.position.set(0, 1.5, 2.5);
-    camera.lookAt(0, 1.4, 0); // 얼굴 높이 기준 (AvatarCanvas.tsx와 동일)
+    applyCameraPreset(camera, headshotRef.current);
 
     // ── 조명
-    scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-    const dir1 = new THREE.DirectionalLight(0xffffff, 1.5);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    const dir1 = new THREE.DirectionalLight(0xffffff, 1.8);
     dir1.position.set(1, 3, 2);
     scene.add(dir1);
-    const dir2 = new THREE.DirectionalLight(0xaac8ff, 0.6);
+    const dir2 = new THREE.DirectionalLight(0xb0c8ff, 0.7);
     dir2.position.set(-2, 1, 1);
     scene.add(dir2);
+    // 아래에서 올라오는 부드러운 fill light
+    const dir3 = new THREE.DirectionalLight(0xffeedd, 0.3);
+    dir3.position.set(0, -1, 1);
+    scene.add(dir3);
 
     // ── 플레이스홀더 구체
     const placeholder = new THREE.Mesh(
-      new THREE.SphereGeometry(0.5, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0x4f46e5 })
+      new THREE.SphereGeometry(0.4, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0x4f46e5, transparent: true, opacity: 0.6 })
     );
     scene.add(placeholder);
 
@@ -131,7 +165,9 @@ export default function AvatarCanvasWeb({
       cancelAnimationFrame(state.rafId);
       ro.disconnect();
       renderer.dispose();
-      container.removeChild(renderer.domElement);
+      if (container.contains(renderer.domElement)) {
+        container.removeChild(renderer.domElement);
+      }
       sceneRef.current = null;
     };
   }, []);
@@ -142,7 +178,6 @@ export default function AvatarCanvasWeb({
     if (!state) return;
 
     if (!url) {
-      // URL 없으면 플레이스홀더 표시
       if (state.placeholder) state.placeholder.visible = true;
       if (state.model) {
         state.scene.remove(state.model);
@@ -151,12 +186,10 @@ export default function AvatarCanvasWeb({
       return;
     }
 
-    // 플레이스홀더 로드 중 표시
     if (state.placeholder) state.placeholder.visible = true;
 
     let cancelled = false;
 
-    // MeshoptDecoder WASM 완전 초기화 대기 후 로드
     const meshoptReady: Promise<void> =
       (MeshoptDecoder as any).ready instanceof Promise
         ? (MeshoptDecoder as any).ready
@@ -175,7 +208,6 @@ export default function AvatarCanvasWeb({
           const s = sceneRef.current;
           if (!s) return;
 
-          // 이전 모델 제거
           if (s.model) s.scene.remove(s.model);
           if (s.mixer) { s.mixer.stopAllAction(); s.mixer = null; }
 
@@ -229,11 +261,10 @@ export default function AvatarCanvasWeb({
     <div
       ref={containerRef}
       style={{
-        background: "#141414",
-        borderRadius: 12,
+        background: "transparent",
         overflow: "hidden",
         width: "100%",
-        height: 180,
+        height: "100%",
         display: "block",
         ...style,
       }}

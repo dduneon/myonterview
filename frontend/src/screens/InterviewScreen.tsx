@@ -1,10 +1,17 @@
 /**
- * 메인 면접 화면 (Phase 3 업데이트)
+ * 메인 면접 화면 — FaceTime 스타일 레이아웃
  *
- * - 면접관 수 (session.interviewer_count) 기반 동적 타일 렌더링
- * - WS 에러 모달 (재연결 실패 시)
- * - 연결 중 배지 (재연결 시도 중)
- * - 면접 녹화 (웹 MediaRecorder) → 종료 시 MinIO 업로드
+ * ┌────────────────────────────┬──────────┐
+ * │                            │ [thumb2] │
+ * │   ACTIVE INTERVIEWER       │ [thumb3] │
+ * │   (메인 타일, 전체 높이)    │ [selfcam]│
+ * │                            │          │
+ * │  [이름 배지 좌하단]         │          │
+ * ├────────────────────────────┴──────────┤
+ * │  [자막 / 현재 질문]                    │
+ * ├────────────────────────────────────────┤
+ * │  [컨트롤 바]                           │
+ * └────────────────────────────────────────┘
  */
 import React, { useEffect, useState, useCallback } from "react";
 import {
@@ -25,8 +32,6 @@ import InterviewerTile from "../components/InterviewerTile";
 import ControlBar from "../components/ControlBar";
 import { uploadRecording } from "../api/client";
 
-const { width: SW } = Dimensions.get("window");
-
 function getAvatarState(
   interviewerId: number,
   activeId: number | null,
@@ -46,7 +51,7 @@ export default function InterviewScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
-  // 웹은 항상 3D 시도 (AvatarCanvasWeb이 URL 없으면 placeholder 표시)
+  // 웹은 항상 3D 시도
   const [use3D, setUse3D] = useState(Platform.OS === "web");
 
   const store = useInterviewStore();
@@ -138,57 +143,76 @@ export default function InterviewScreen() {
   const activeId = store.activeInterviewerId;
   const wsError = store.wsError;
 
+  // FaceTime 레이아웃: 활성 면접관 → 메인, 나머지 → 썸네일
+  const mainId = activeId ?? interviewerIds[0];
+  const thumbIds = interviewerIds.filter((id) => id !== mainId);
+
   return (
     <View style={styles.container}>
-      {/* 진행률 */}
+
+      {/* ── 영상 영역 ── */}
+      <View style={styles.videoArea}>
+
+        {/* 메인 타일 — 발화 중인 면접관 전체 화면 */}
+        <InterviewerTile
+          interviewerId={mainId}
+          isActive={activeId === mainId}
+          avatarState={getAvatarState(mainId, activeId, isTTSPlaying, isRecording)}
+          mouthOpen={mouthOpen}
+          use3D={use3D}
+          size="main"
+        />
+
+        {/* 우측 썸네일 컬럼 */}
+        <View style={styles.thumbColumn}>
+          {thumbIds.map((id) => (
+            <InterviewerTile
+              key={id}
+              interviewerId={id}
+              isActive={activeId === id}
+              avatarState={getAvatarState(id, activeId, isTTSPlaying, isRecording)}
+              mouthOpen={mouthOpen}
+              use3D={use3D}
+              size="thumb"
+            />
+          ))}
+
+          {/* 자기 카메라 PiP — 썸네일 아래 */}
+          {isCamOn && permission?.granted && (
+            <View style={styles.selfCamera}>
+              <CameraView style={StyleSheet.absoluteFill} facing="front" />
+              <Text style={styles.selfLabel}>나</Text>
+            </View>
+          )}
+        </View>
+
+        {/* 진행률 배지 — 메인 타일 우상단 */}
+        {currentQuestion && (
+          <View style={styles.progressBadge}>
+            <Text style={styles.progressText}>
+              Q{currentQuestion.index} / {currentQuestion.total}
+            </Text>
+          </View>
+        )}
+
+        {/* 재연결 중 배지 */}
+        {!wsConnected && !wsError && (
+          <View style={styles.connectingBadge}>
+            <Text style={styles.connectingText}>🔄 연결 중...</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── 자막 ── */}
       {currentQuestion && (
-        <View style={styles.progressBadge}>
-          <Text style={styles.progressText}>
-            Q{currentQuestion.index} / {currentQuestion.total}
+        <View style={styles.subtitleBox}>
+          <Text style={styles.subtitleText} numberOfLines={3}>
+            {currentQuestion.text}
           </Text>
         </View>
       )}
 
-      {/* 재연결 중 배지 */}
-      {!wsConnected && !wsError && (
-        <View style={styles.connectingBadge}>
-          <Text style={styles.connectingText}>🔄 연결 중...</Text>
-        </View>
-      )}
-
-      {/* 면접관 그리드 */}
-      <View style={[
-        styles.interviewersGrid,
-        interviewerCount === 1 && styles.gridSingle,
-        interviewerCount === 2 && styles.gridDouble,
-      ]}>
-        {interviewerIds.map((id) => (
-          <InterviewerTile
-            key={id}
-            interviewerId={id}
-            isActive={activeId === id}
-            avatarState={getAvatarState(id, activeId, isTTSPlaying, isRecording)}
-            mouthOpen={mouthOpen}
-            use3D={use3D}
-          />
-        ))}
-      </View>
-
-      {/* 현재 질문 자막 */}
-      {currentQuestion && (
-        <View style={styles.subtitleBox}>
-          <Text style={styles.subtitleText}>{currentQuestion.text}</Text>
-        </View>
-      )}
-
-      {/* 사용자 카메라 PiP */}
-      {isCamOn && permission?.granted && (
-        <View style={styles.selfCamera}>
-          <CameraView style={StyleSheet.absoluteFill} facing="front" />
-        </View>
-      )}
-
-      {/* 하단 컨트롤 바 */}
+      {/* ── 컨트롤 바 ── */}
       <ControlBar
         isRecording={isRecording}
         isMicOn={isMicOn}
@@ -200,7 +224,7 @@ export default function InterviewScreen() {
         onEnd={handleEnd}
       />
 
-      {/* WS 에러 모달 */}
+      {/* ── WS 에러 모달 ── */}
       <Modal visible={!!wsError} transparent animationType="fade">
         <View style={styles.errorOverlay}>
           <View style={styles.errorCard}>
@@ -224,49 +248,107 @@ export default function InterviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0a0a0a" },
-  progressBadge: {
-    position: "absolute", top: 56, right: 16,
-    backgroundColor: "#1a1a1a",
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 999, zIndex: 10,
+  container: { flex: 1, backgroundColor: "#000" },
+
+  // ── 영상 영역
+  videoArea: {
+    flex: 1,
+    flexDirection: "row",
+    padding: 8,
+    gap: 8,
   },
-  progressText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
+
+  // ── 우측 썸네일 컬럼
+  thumbColumn: {
+    width: 116,
+    flexDirection: "column",
+    gap: 8,
+  },
+
+  // ── 자기 카메라 PiP
+  selfCamera: {
+    width: 108,
+    height: 140,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#333",
+    position: "relative",
+  },
+  selfLabel: {
+    position: "absolute",
+    bottom: 6,
+    left: 8,
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "600",
+    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+
+  // ── 오버레이 배지
+  progressBadge: {
+    position: "absolute",
+    top: 20,
+    left: 20,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  progressText: { color: "#ddd", fontSize: 13, fontWeight: "600" },
+
   connectingBadge: {
-    position: "absolute", top: 56, left: 16,
-    backgroundColor: "#1a1a2e",
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 999, zIndex: 10,
+    position: "absolute",
+    top: 20,
+    right: 132, // 썸네일 컬럼 왼쪽
+    backgroundColor: "rgba(15,15,40,0.75)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
   connectingText: { color: "#818cf8", fontSize: 12 },
-  interviewersGrid: {
-    flexDirection: "row", padding: 12, paddingTop: 60, flex: 1,
-  },
-  gridSingle: { justifyContent: "center" },
-  gridDouble: { justifyContent: "space-evenly" },
+
+  // ── 자막
   subtitleBox: {
-    marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: "rgba(0,0,0,0.72)",
-    borderRadius: 12, padding: 12,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    backgroundColor: "rgba(10,10,10,0.85)",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 44,
   },
-  subtitleText: { color: "#fff", fontSize: 15, lineHeight: 22, textAlign: "center" },
-  selfCamera: {
-    position: "absolute", bottom: 100, right: 16,
-    width: 90, height: 130,
-    borderRadius: 12, overflow: "hidden",
-    borderWidth: 2, borderColor: "#333",
+  subtitleText: {
+    color: "#f0f0f0",
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
   },
+
+  // ── WS 에러 모달
   errorOverlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.75)",
-    alignItems: "center", justifyContent: "center",
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   errorCard: {
-    backgroundColor: "#1a1a1a", borderRadius: 20,
-    padding: 32, width: "80%", alignItems: "center",
+    backgroundColor: "#1a1a1a",
+    borderRadius: 20,
+    padding: 32,
+    width: "80%",
+    alignItems: "center",
   },
   errorIcon: { fontSize: 40, marginBottom: 12 },
   errorTitle: { fontSize: 18, color: "#fff", fontWeight: "700", marginBottom: 8 },
   errorMsg: { fontSize: 14, color: "#888", textAlign: "center", marginBottom: 24, lineHeight: 20 },
-  errorBtn: { backgroundColor: "#4f46e5", borderRadius: 12, paddingVertical: 12, paddingHorizontal: 28 },
+  errorBtn: {
+    backgroundColor: "#4f46e5",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+  },
   errorBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });
