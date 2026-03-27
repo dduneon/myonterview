@@ -29,6 +29,17 @@ export interface QuestionOut {
   category: string;
 }
 
+export interface QuestionFeedback {
+  question_id_index: number;
+  score: number;
+  comment: string;
+  good_points: string | null;
+  better_answer: string | null;
+  question: string;       // 질문 텍스트
+  answer: string;         // STT 답변 텍스트
+  category: string;
+}
+
 export interface FeedbackResponse {
   session_id: string;
   overall_score: number;
@@ -38,7 +49,7 @@ export interface FeedbackResponse {
   communication_score: number;
   strengths: string[];
   improvements: string[];
-  question_feedbacks: { question_id_index: number; comment: string; score: number }[];
+  question_feedbacks: QuestionFeedback[];
 }
 
 // ── API 함수 ──────────────────────────────────────────────────

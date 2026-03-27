@@ -101,6 +101,17 @@ def task_generate_feedback(self, session_id: str):
             job_title=session.job_title,
         )
 
+        # question_reviews에 질문 텍스트·답변 텍스트를 병합해서 저장
+        reviews = result.get("question_reviews", [])
+        enriched_reviews = []
+        for r in reviews:
+            idx = r.get("question_id_index", 0)
+            if idx < len(qa_pairs):
+                r["question"] = qa_pairs[idx]["question"]
+                r["answer"] = qa_pairs[idx]["answer"] or "(건너뜀)"
+                r["category"] = qa_pairs[idx]["category"]
+            enriched_reviews.append(r)
+
         feedback = Feedback(
             session_id=session_id,
             overall_score=result.get("overall_score"),
@@ -110,7 +121,7 @@ def task_generate_feedback(self, session_id: str):
             communication_score=result.get("category_scores", {}).get("communication"),
             strengths=result.get("strengths", []),
             improvements=result.get("improvements", []),
-            question_feedbacks=result.get("question_reviews", []),
+            question_feedbacks=enriched_reviews,
         )
         db.add(feedback)
         db.commit()

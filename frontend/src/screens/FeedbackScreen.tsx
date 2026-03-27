@@ -12,13 +12,81 @@ import {
   ActivityIndicator, Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { getFeedback, FeedbackResponse } from "../api/client";
+import { getFeedback, FeedbackResponse, QuestionFeedback } from "../api/client";
 import { useInterviewStore } from "../store/interviewStore";
 
 const SCORE_COLOR = (s: number) =>
   s >= 80 ? "#4ade80" : s >= 60 ? "#fbbf24" : "#f87171";
 
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+const CATEGORY_LABEL: Record<string, string> = {
+  intro: "자기소개", technical: "기술", behavioral: "경험",
+  situational: "상황대처", company_specific: "회사특화", closing: "마무리",
+};
+
+function QuestionReviewCard({ qf }: { qf: QuestionFeedback }) {
+  const [expanded, setExpanded] = useState(false);
+  const isSkipped = qf.answer === "(건너뜀)" || !qf.answer;
+
+  return (
+    <View style={styles.qfCard}>
+      {/* 헤더: Q번호 / 카테고리 / 점수 */}
+      <View style={styles.qfHeader}>
+        <View style={styles.qfHeaderLeft}>
+          <Text style={styles.qfIndex}>Q{qf.question_id_index + 1}</Text>
+          {qf.category && (
+            <View style={styles.catBadge}>
+              <Text style={styles.catBadgeText}>
+                {CATEGORY_LABEL[qf.category] ?? qf.category}
+              </Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.qfScore, { color: SCORE_COLOR(qf.score ?? 0) }]}>
+          {qf.score ?? "-"}점
+        </Text>
+      </View>
+
+      {/* 질문 텍스트 */}
+      <Text style={styles.qfQuestion}>{qf.question ?? "질문 텍스트 없음"}</Text>
+
+      {/* 내 답변 */}
+      <View style={[styles.answerBox, isSkipped && styles.answerBoxSkipped]}>
+        <Text style={styles.answerLabel}>{isSkipped ? "건너뜀" : "내 답변"}</Text>
+        {!isSkipped && (
+          <Text style={styles.answerText} numberOfLines={expanded ? undefined : 3}>
+            {qf.answer}
+          </Text>
+        )}
+        {!isSkipped && qf.answer && qf.answer.length > 120 && (
+          <TouchableOpacity onPress={() => setExpanded((v) => !v)}>
+            <Text style={styles.expandBtn}>{expanded ? "접기 ▲" : "더 보기 ▼"}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* 평가 요약 */}
+      <Text style={styles.qfComment}>{qf.comment}</Text>
+
+      {/* 잘한 점 */}
+      {qf.good_points && (
+        <View style={styles.feedbackRow}>
+          <Text style={styles.feedbackIcon}>✓</Text>
+          <Text style={styles.feedbackGood}>{qf.good_points}</Text>
+        </View>
+      )}
+
+      {/* 더 나은 답변 */}
+      {qf.better_answer && (
+        <View style={styles.feedbackRow}>
+          <Text style={styles.feedbackIcon}>💡</Text>
+          <Text style={styles.feedbackBetter}>{qf.better_answer}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
   return (
@@ -156,13 +224,7 @@ export default function FeedbackScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>질문별 상세 리뷰</Text>
           {(feedback.question_feedbacks ?? []).map((qf, i) => (
-            <View key={i} style={styles.qfRow}>
-              <View style={styles.qfHeader}>
-                <Text style={styles.qfIndex}>Q{qf.question_id_index + 1}</Text>
-                <Text style={[styles.qfScore, { color: SCORE_COLOR(qf.score) }]}>{qf.score}점</Text>
-              </View>
-              <Text style={styles.qfComment}>{qf.comment}</Text>
-            </View>
+            <QuestionReviewCard key={i} qf={qf} />
           ))}
         </View>
       )}
@@ -218,11 +280,41 @@ const styles = StyleSheet.create({
   bulletGreen: { fontSize: 15, color: "#4ade80", marginTop: 1 },
   bulletYellow: { fontSize: 15, color: "#fbbf24", marginTop: 1 },
   bulletText: { flex: 1, fontSize: 14, color: "#ccc", lineHeight: 20 },
-  qfRow: { borderTopWidth: 1, borderTopColor: "#222", paddingTop: 14, marginTop: 14 },
-  qfHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  qfIndex: { fontSize: 13, fontWeight: "700", color: "#888" },
-  qfScore: { fontSize: 13, fontWeight: "700" },
-  qfComment: { fontSize: 14, color: "#ccc", lineHeight: 20 },
+  // 질문별 리뷰 카드
+  qfCard: {
+    borderTopWidth: 1, borderTopColor: "#222",
+    paddingTop: 18, marginTop: 18,
+  },
+  qfHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  qfHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  qfIndex: { fontSize: 13, fontWeight: "800", color: "#888" },
+  catBadge: {
+    backgroundColor: "#1e1e2e", borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 2,
+  },
+  catBadgeText: { fontSize: 11, color: "#818cf8", fontWeight: "600" },
+  qfScore: { fontSize: 15, fontWeight: "800" },
+
+  // 질문 텍스트
+  qfQuestion: { fontSize: 15, color: "#fff", fontWeight: "600", lineHeight: 22, marginBottom: 12 },
+
+  // 내 답변 박스
+  answerBox: {
+    backgroundColor: "#1a1a1a", borderRadius: 10,
+    padding: 12, marginBottom: 12,
+    borderLeftWidth: 3, borderLeftColor: "#4f46e5",
+  },
+  answerBoxSkipped: { borderLeftColor: "#444" },
+  answerLabel: { fontSize: 11, color: "#666", fontWeight: "600", marginBottom: 4 },
+  answerText: { fontSize: 14, color: "#bbb", lineHeight: 20 },
+  expandBtn: { fontSize: 12, color: "#6366f1", marginTop: 6, fontWeight: "600" },
+
+  // AI 피드백
+  qfComment: { fontSize: 13, color: "#888", lineHeight: 19, marginBottom: 8 },
+  feedbackRow: { flexDirection: "row", gap: 8, marginTop: 6 },
+  feedbackIcon: { fontSize: 14, marginTop: 1 },
+  feedbackGood: { flex: 1, fontSize: 13, color: "#4ade80", lineHeight: 19 },
+  feedbackBetter: { flex: 1, fontSize: 13, color: "#fbbf24", lineHeight: 19 },
   downloadBtn: {
     marginTop: 8, backgroundColor: "#1a1a1a",
     borderRadius: 14, paddingVertical: 16, alignItems: "center",
