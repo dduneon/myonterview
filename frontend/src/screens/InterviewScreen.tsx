@@ -15,12 +15,11 @@
  */
 import React, { useEffect, useState, useCallback } from "react";
 import {
-  View, Text, StyleSheet, Alert, Dimensions,
-  Platform, TouchableOpacity, Modal,
+  View, Text, StyleSheet, Alert,
+  TouchableOpacity, Modal,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import DeviceInfo from "react-native-device-info";
 
 import { useInterviewStore } from "../store/interviewStore";
 import { useInterview } from "../hooks/useInterview";
@@ -51,8 +50,6 @@ export default function InterviewScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
-  // 웹은 항상 3D 시도
-  const [use3D, setUse3D] = useState(Platform.OS === "web");
 
   const store = useInterviewStore();
   const { sendAnswer, skipQuestion, wsConnected } = useInterview(sessionId);
@@ -65,11 +62,6 @@ export default function InterviewScreen() {
   const interviewerIds = Array.from({ length: interviewerCount }, (_, i) => (i + 1) as 1 | 2 | 3);
 
   useEffect(() => {
-    if (Platform.OS !== "web") {
-      DeviceInfo.getTotalMemory().then((bytes) => {
-        setUse3D(bytes >= 3 * 1024 * 1024 * 1024);
-      });
-    }
     requestPermission();
     startVideoRec();
   }, []);
@@ -159,7 +151,6 @@ export default function InterviewScreen() {
           isActive={activeId === mainId}
           avatarState={getAvatarState(mainId, activeId, isTTSPlaying, isRecording)}
           mouthOpen={mouthOpen}
-          use3D={use3D}
           size="main"
         />
 
@@ -172,7 +163,6 @@ export default function InterviewScreen() {
               isActive={activeId === id}
               avatarState={getAvatarState(id, activeId, isTTSPlaying, isRecording)}
               mouthOpen={mouthOpen}
-              use3D={use3D}
               size="thumb"
             />
           ))}
