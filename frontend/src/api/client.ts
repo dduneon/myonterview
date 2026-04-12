@@ -67,6 +67,7 @@ export async function createSession(form: {
   resume_file: FileField;
   portfolio_file?: FileField | null;
   portfolio_url?: string;
+  jd_text?: string;
 }): Promise<SessionResponse> {
   const data = new FormData();
   data.append("company", form.company);
@@ -77,6 +78,7 @@ export async function createSession(form: {
   data.append("resume_file", form.resume_file as any);
   if (form.portfolio_file) data.append("portfolio_file", form.portfolio_file as any);
   if (form.portfolio_url) data.append("portfolio_url", form.portfolio_url);
+  if (form.jd_text) data.append("jd_text", form.jd_text);
 
   const res = await api.post<SessionResponse>("/api/session", data, {
     headers: typeof document !== "undefined" ? {} : { "Content-Type": "multipart/form-data" },
@@ -90,7 +92,10 @@ export async function getSession(sessionId: string): Promise<SessionResponse> {
 }
 
 export async function getFeedback(sessionId: string): Promise<FeedbackResponse> {
-  const res = await api.get<FeedbackResponse>(`/api/feedback/${sessionId}`);
+  // validateStatus: 200만 성공으로 처리 — 202(생성 중)는 에러로 throw해서 polling 유지
+  const res = await api.get<FeedbackResponse>(`/api/feedback/${sessionId}`, {
+    validateStatus: (status) => status === 200,
+  });
   return res.data;
 }
 

@@ -37,6 +37,7 @@ export default function SetupScreen() {
   const [resumeFile, setResumeFile] = useState<any>(null);
   const [portfolioFile, setPortfolioFile] = useState<any>(null);
   const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [jdText, setJdText] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function pickResume() {
@@ -67,6 +68,7 @@ export default function SetupScreen() {
         resume_file: toFileField(resumeFile),
         portfolio_file: portfolioFile ? toFileField(portfolioFile) : null,
         portfolio_url: portfolioUrl || undefined,
+        jd_text: jdText.trim() || undefined,
       });
       setSession(session);
       router.push({ pathname: "/loading", params: { sessionId: session.id } });
@@ -125,6 +127,18 @@ export default function SetupScreen() {
         placeholderTextColor="#666"
         value={jobTitle}
         onChangeText={setJobTitle}
+      />
+
+      {/* 채용공고 / JD */}
+      <Text style={styles.label}>채용공고 / JD (선택)</Text>
+      <TextInput
+        style={[styles.input, styles.textArea]}
+        placeholder={"사람인·원티드 등에서 채용공고를 복사해서 붙여넣으세요.\n입력 시 회사 맞춤형 질문 품질이 크게 향상됩니다."}
+        placeholderTextColor="#555"
+        value={jdText}
+        onChangeText={setJdText}
+        multiline
+        textAlignVertical="top"
       />
 
       {/* 면접 유형 */}
@@ -195,6 +209,10 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: "#1a1a1a", borderRadius: 12, padding: 14,
     color: "#fff", fontSize: 15, borderWidth: 1, borderColor: "#2a2a2a",
+  },
+  textArea: {
+    height: 130,
+    paddingTop: 14,
   },
   uploadBtn: {
     backgroundColor: "#1a1a1a", borderRadius: 12, padding: 14,
