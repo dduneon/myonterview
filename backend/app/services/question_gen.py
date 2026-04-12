@@ -1,65 +1,19 @@
-"""질문 생성 파이프라인 (OpenAI-compatible API + Tavily 웹 검색)."""
+"""질문 생성 파이프라인 (OpenAI-compatible API)."""
 import json
 from typing import Optional
 
 from openai import OpenAI
-from tavily import TavilyClient
 
 from app.core.config import get_settings
-from app.models.schemas import QuestionCategory
 
 settings = get_settings()
-
 _llm = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
-_tavily = TavilyClient(api_key=settings.tavily_api_key) if settings.tavily_api_key else None
 
 INTERVIEWER_PERSONAS = {
     1: "인사팀 팀장 (40대 여성, 친절하고 체계적, 인성·문화 적합성 중심)",
     2: "개발팀 리드 (30대 남성, 날카롭고 기술적, 실무 능력·문제 해결력 중심)",
     3: "경영진 (50대 남성, 압박 스타일, 논리력·위기 대응력·비전 중심)",
 }
-
-
-def _search_company_info(company: str, job_title: str) -> dict:
-    """Tavily로 두 가지 쿼리를 실행:
-    - 회사 개요: 주요 서비스·사업·기술·문화
-    - 직무 정보: 해당 포지션 요건·역할
-
-    Returns:
-        {"company": str, "job": str}  — 각 검색 결과 텍스트, 실패 시 빈 문자열
-    """
-    if not _tavily:
-        return {"company": "", "job": ""}
-
-    results = {"company": "", "job": ""}
-
-    # Query 1 — 회사 전반 정보
-    try:
-        res = _tavily.search(
-            query=f"{company} 주요 사업 서비스 기술스택 기업문화 특징",
-            max_results=4,
-            search_depth="basic",
-        )
-        results["company"] = "\n".join(
-            r.get("content", "") for r in res.get("results", [])
-        )[:2000]
-    except Exception:
-        pass
-
-    # Query 2 — 직무 특화 정보
-    try:
-        res = _tavily.search(
-            query=f"{company} {job_title} 직무 역할 채용 요건 기술",
-            max_results=4,
-            search_depth="basic",
-        )
-        results["job"] = "\n".join(
-            r.get("content", "") for r in res.get("results", [])
-        )[:2000]
-    except Exception:
-        pass
-
-    return results
 
 
 def _build_profile(resume_text: str) -> dict:
@@ -93,6 +47,29 @@ def _build_profile(resume_text: str) -> dict:
         return {"raw": resume_text[:2000]}
 
 
+def _build_company_context(company: str, job_title: str, jd_text: Optional[str]) -> str:
+    """JD 텍스트 유무에 따라 회사 컨텍스트 섹션을 구성한다."""
+    lines = ["## 회사·직무 컨텍스트"]
+
+    if jd_text and jd_text.strip():
+        lines.append("(사용자 제공 채용공고 기반 — 아래 내용을 최우선으로 활용할 것)")
+        lines.append(f"\n### {company} 채용공고 / JD")
+        lines.append(jd_text[:3000])
+    else:
+        lines.append(
+            f"(채용공고 미제공 — 당신이 알고 있는 {company}에 대한 지식을 적극 활용할 것)"
+        )
+        lines.append(
+            f"\n당신이 알고 있는 {company}의 주요 서비스, 사업 분야, 기술 스택, "
+            f"기업 문화, 최근 이슈, {job_title} 포지션의 역할을 바탕으로 "
+            f"company_specific 질문을 생성하라. "
+            f"정보가 불확실하더라도 {company}의 일반적인 비즈니스 특성과 "
+            f"{job_title} 직무를 연결하여 구체적인 질문을 만들어라."
+        )
+
+    return "\n".join(lines)
+
+
 def generate_questions(
     resume_text: str,
     company: str,
@@ -100,6 +77,7 @@ def generate_questions(
     interview_type: str = "신입",
     portfolio_text: Optional[str] = None,
     interviewer_count: int = 3,
+    jd_text: Optional[str] = None,
 ) -> list[dict]:
     """질문 리스트를 생성하고 반환한다.
 
@@ -107,19 +85,11 @@ def generate_questions(
         [{"text": str, "category": str, "interviewer_id": int}, ...]
     """
     profile = _build_profile(resume_text)
-    company_search = _search_company_info(company, job_title)
+    company_context_section = _build_company_context(company, job_title, jd_text)
 
-    # ── 포트폴리오 섹션
     portfolio_section = ""
     if portfolio_text:
         portfolio_section = f"\n\n포트폴리오 요약:\n{portfolio_text[:2000]}"
-
-    # ── 회사 정보 섹션 (Tavily 결과 또는 LLM 자체 지식 활용 안내)
-    company_context_section = _build_company_context(
-        company=company,
-        job_title=job_title,
-        company_search=company_search,
-    )
 
     active_personas = {k: v for k, v in INTERVIEWER_PERSONAS.items() if k <= interviewer_count}
     personas_text = "\n".join(
@@ -147,7 +117,7 @@ def generate_questions(
 
 ### 카테고리 배분 (반드시 지킬 것):
 - **company_specific** 3개 필수: {company} 회사·{job_title} 직무를 직접 연결한 질문
-  * 회사 실제 서비스/사업/기술/이슈를 질문에 명시적으로 언급
+  * 채용공고가 제공된 경우 JD의 요구사항·기술스택·업무 내용을 질문에 직접 반영
   * 지원자의 경험·기술과 {company}의 비즈니스를 연결
   * 예시 형태: "{company}의 [구체적 서비스/사업] 에서 {job_title}로서..."
 - **intro** 1~2개: 자기소개·지원동기
@@ -178,34 +148,3 @@ def generate_questions(
     start = raw.find("[")
     end = raw.rfind("]") + 1
     return json.loads(raw[start:end])
-
-
-def _build_company_context(company: str, job_title: str, company_search: dict) -> str:
-    """Tavily 결과 유무에 따라 회사 컨텍스트 섹션을 구성한다."""
-    lines = ["## 회사·직무 컨텍스트"]
-
-    has_company = bool(company_search.get("company", "").strip())
-    has_job = bool(company_search.get("job", "").strip())
-
-    if has_company or has_job:
-        lines.append("(웹 검색 결과 기반)")
-        if has_company:
-            lines.append(f"\n### {company} 회사 정보")
-            lines.append(company_search["company"])
-        if has_job:
-            lines.append(f"\n### {company} {job_title} 직무 정보")
-            lines.append(company_search["job"])
-    else:
-        # Tavily 없거나 검색 실패 → LLM 자체 지식 활용 지시
-        lines.append(
-            f"(웹 검색 결과 없음 — 당신이 알고 있는 {company}에 대한 지식을 적극 활용할 것)"
-        )
-        lines.append(
-            f"\n당신이 알고 있는 {company}의 주요 서비스, 사업 분야, 기술 스택, "
-            f"기업 문화, 최근 이슈, {job_title} 포지션의 역할을 바탕으로 "
-            f"company_specific 질문을 생성하라. "
-            f"정보가 불확실하더라도 {company}의 일반적인 비즈니스 특성과 "
-            f"{job_title} 직무를 연결하여 구체적인 질문을 만들어라."
-        )
-
-    return "\n".join(lines)

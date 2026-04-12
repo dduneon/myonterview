@@ -13,9 +13,6 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_stt_model: str = "whisper-1"  # Groq 사용 시: whisper-large-v3-turbo
 
-    # Tavily
-    tavily_api_key: str = ""
-
     # PostgreSQL
     database_url: str
 

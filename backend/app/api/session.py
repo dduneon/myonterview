@@ -41,6 +41,7 @@ async def create_session(
     resume_file: UploadFile = File(...),
     portfolio_file: Optional[UploadFile] = File(None),
     portfolio_url: Optional[str] = Form(None),
+    jd_text: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     """이력서 업로드 + 세션 생성 → 질문 생성을 비동기로 시작."""
@@ -83,6 +84,7 @@ async def create_session(
         interview_type=interview_type,
         portfolio_text=portfolio_text,
         interviewer_count=interviewer_count,
+        jd_text=jd_text or "",
     )
 
     return SessionResponse(
